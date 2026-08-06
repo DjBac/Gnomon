@@ -1,8 +1,10 @@
 ---
 project: Gnomon
+phase: usable
+stakes: personal
+target:
 next: "Backfill STATE.md headers across remaining repos"
 blocker: ""
-updated: 2026-08-06
 ---
 
 # Gnomon
@@ -11,7 +13,8 @@ Read-only project status board, shipped as a Home Assistant add-on
 from the `gnomon` repository.
 
 ## Decided
-- Schema: 4 fields — `project`, `next`, `blocker`, `updated`. No phase, no stakes.
+- Schema: 6 fields — `project`, `phase`, `stakes`, `target`, `next`, `blocker`.
+  `updated` is derived from the repo's last push; `priority` is computed, never stored.
 - Source of truth: `STATE.md` front-matter per repo. Pull, not push.
 - Surface: HA add-on, ingress panel, sidebar entry.
 - Distribution: add-on repository, not a local `/addons` folder.

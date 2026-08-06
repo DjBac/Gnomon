@@ -3,13 +3,19 @@
 Polls a list of GitHub repositories, reads the YAML front-matter block from
 each repo's STATE.md, and serves a single-page panel over HA ingress.
 
+Facts come from the GitHub API. Judgments come from STATE.md. Freshness is
+derived from the repo's last push, never from a hand-maintained date, and
+priority is computed from stakes, target and blocker rather than stored.
+
 Expected STATE.md header:
 
     ---
     project: Nostos
+    phase: building
+    stakes: revenue
+    target: 2027-09-30
     next: "Wire Stripe webhook to delivery unlock"
     blocker: ""
-    updated: 2026-08-06
     ---
 """
 
@@ -19,6 +25,7 @@ import asyncio
 import json
 import logging
 import os
+import sys
 from datetime import date, datetime, timezone
 from pathlib import Path
 
@@ -34,15 +41,30 @@ WWW_DIR = Path(__file__).parent / "www"
 GITHUB_API = "https://api.github.com"
 PORT = 8099
 
-# Freshness bands, in days since `updated`.
+# Freshness bands, in days since the repo's last push.
 FRESH_MAX = 6
+
+PHASES = ["idea", "building", "usable", "shipped", "parked"]
+STAKES_BASE = {"revenue": 4.0, "product": 2.0, "personal": 1.0}
+DEFAULT_STAKES = "personal"
+
+BLOCKED_MULTIPLIER = 1.4
+PARKED_MULTIPLIER = 0.2
 
 
 def load_options() -> dict:
-    """Read add-on options, falling back to env vars for local dev."""
+    """Read add-on options, falling back to env vars for local dev.
+
+    Called on every poll cycle so a config change takes effect without a
+    restart.
+    """
     if OPTIONS_PATH.exists():
-        with OPTIONS_PATH.open(encoding="utf-8") as handle:
-            return json.load(handle)
+        try:
+            with OPTIONS_PATH.open(encoding="utf-8") as handle:
+                return json.load(handle)
+        except (OSError, json.JSONDecodeError) as err:
+            LOG.warning("Could not read options: %s", err)
+            return {}
     return {
         "github_token": os.environ.get("GITHUB_TOKEN", ""),
         "repos": [r for r in os.environ.get("REPOS", "").split(",") if r],
@@ -51,38 +73,110 @@ def load_options() -> dict:
     }
 
 
-def parse_front_matter(text: str) -> dict | None:
-    """Extract and parse the leading `---` YAML block from a markdown file."""
+def parse_front_matter(text: str) -> tuple[dict | None, str]:
+    """Extract the leading `---` YAML block. Returns (data, note)."""
     if not text.startswith("---"):
-        return None
+        return None, "STATE.md has no front-matter block"
     parts = text.split("---", 2)
     if len(parts) < 3:
-        return None
+        return None, "STATE.md has no front-matter block"
     try:
         data = yaml.safe_load(parts[1])
     except yaml.YAMLError as err:
         LOG.warning("Malformed front-matter: %s", err)
-        return None
-    return data if isinstance(data, dict) else None
+        return None, "STATE.md front-matter is not valid YAML"
+    if not isinstance(data, dict):
+        return None, "STATE.md front-matter is not a mapping"
+    return data, ""
 
 
-def days_since(value) -> int | None:
-    """Days between `updated` and today. Accepts a date or an ISO string."""
+def to_date(value) -> date | None:
+    """Coerce a YAML date or an ISO string to a date."""
     if isinstance(value, datetime):
-        value = value.date()
+        return value.date()
+    if isinstance(value, date):
+        return value
     if isinstance(value, str):
         try:
-            value = date.fromisoformat(value.strip()[:10])
+            return date.fromisoformat(value.strip()[:10])
         except ValueError:
             return None
-    if not isinstance(value, date):
+    return None
+
+
+def today_utc() -> date:
+    return datetime.now(timezone.utc).date()
+
+
+def days_since(value, now: date | None = None) -> int | None:
+    """Whole days from `value` until today, UTC."""
+    when = to_date(value)
+    if when is None:
         return None
-    return (datetime.now(timezone.utc).date() - value).days
+    return ((now or today_utc()) - when).days
 
 
-def classify(blocker: str, age: int | None, stale_days: int) -> str:
+def days_until(value, now: date | None = None) -> int | None:
+    """Whole days from today until `value`, UTC. Negative when overdue."""
+    when = to_date(value)
+    if when is None:
+        return None
+    return (when - (now or today_utc())).days
+
+
+def normalise_phase(value) -> str:
+    """A recognised phase, or empty string."""
+    phase = str(value or "").strip().lower()
+    return phase if phase in PHASES else ""
+
+
+def normalise_stakes(value) -> str:
+    """A recognised stakes level, defaulting to personal."""
+    stakes = str(value or "").strip().lower()
+    return stakes if stakes in STAKES_BASE else DEFAULT_STAKES
+
+
+def urgency(days_to_target: int | None) -> float:
+    """Multiplier derived from how close the target date is."""
+    if days_to_target is None:
+        return 1.0
+    if days_to_target < 0:
+        return 3.0
+    if days_to_target <= 30:
+        return 2.4
+    if days_to_target <= 90:
+        return 1.7
+    if days_to_target <= 180:
+        return 1.3
+    return 1.0
+
+
+def compute_score(
+    stakes: str, days_to_target: int | None, blocker: str, phase: str
+) -> float:
+    """Priority score. Never stored — always computed from current facts."""
+    score = STAKES_BASE.get(stakes, STAKES_BASE[DEFAULT_STAKES])
+    score *= urgency(days_to_target)
+    if blocker:
+        score *= BLOCKED_MULTIPLIER
+    if phase == "parked":
+        score *= PARKED_MULTIPLIER
+    return round(score, 2)
+
+
+def band(score: float) -> str:
+    if score >= 4.0:
+        return "high"
+    if score >= 2.0:
+        return "normal"
+    return "low"
+
+
+def classify(blocker: str, phase: str, age: int | None, stale_days: int) -> str:
     if blocker:
         return "blocked"
+    if phase == "parked":
+        return "parked"
     if age is None:
         return "unknown"
     if age <= FRESH_MAX:
@@ -92,71 +186,146 @@ def classify(blocker: str, age: int | None, stale_days: int) -> str:
     return "stale"
 
 
-async def fetch_repo(session: aiohttp.ClientSession, repo: str, stale_days: int) -> dict:
-    """Fetch and interpret one repo's STATE.md."""
-    card = {
+def new_card(repo: str) -> dict:
+    return {
         "repo": repo,
         "project": repo.split("/")[-1],
+        "phase": "",
+        "stakes": DEFAULT_STAKES,
+        "target": "",
+        "days_to_target": None,
         "next": "",
         "blocker": "",
         "updated": None,
         "age": None,
         "state": "unknown",
+        "priority": "low",
+        "score": 0.0,
         "note": "",
     }
 
+
+def meta_note(status: int) -> str:
+    if status == 401:
+        return "Token rejected — check scopes"
+    if status == 403:
+        return "Forbidden — token lacks access"
+    if status == 404:
+        return "Repo not found — check name and casing"
+    return f"GitHub returned {status}"
+
+
+async def fetch_pushed_at(session: aiohttp.ClientSession, repo: str) -> tuple[str | None, str]:
+    """Repo metadata call. Returns (pushed_at, note)."""
+    url = f"{GITHUB_API}/repos/{repo}"
+    try:
+        async with session.get(url, headers={"Accept": "application/vnd.github+json"}) as response:
+            if response.status != 200:
+                return None, meta_note(response.status)
+            data = await response.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError) as err:
+        return None, f"Fetch failed: {type(err).__name__}"
+    except (json.JSONDecodeError, ValueError):
+        return None, "GitHub returned an unreadable response"
+    if not isinstance(data, dict):
+        return None, "GitHub returned an unreadable response"
+    return data.get("pushed_at"), ""
+
+
+async def fetch_state_md(session: aiohttp.ClientSession, repo: str) -> tuple[str | None, str]:
+    """STATE.md contents call. Returns (body, note)."""
     url = f"{GITHUB_API}/repos/{repo}/contents/STATE.md"
     try:
-        async with session.get(url) as response:
+        async with session.get(
+            url, headers={"Accept": "application/vnd.github.raw+json"}
+        ) as response:
             if response.status == 404:
-                card["note"] = "No STATE.md in this repo"
-                return card
-            if response.status == 401:
-                card["note"] = "Token rejected — check scopes"
-                return card
+                return None, "No STATE.md in this repo"
             if response.status != 200:
-                card["note"] = f"GitHub returned {response.status}"
-                return card
-            body = await response.text()
+                return None, meta_note(response.status)
+            return await response.text(), ""
     except (aiohttp.ClientError, asyncio.TimeoutError) as err:
-        card["note"] = f"Fetch failed: {type(err).__name__}"
+        return None, f"Fetch failed: {type(err).__name__}"
+
+
+async def fetch_repo(session: aiohttp.ClientSession, repo: str, stale_days: int) -> dict:
+    """Build one card from repo metadata plus STATE.md."""
+    card = new_card(repo)
+
+    pushed_at, note = await fetch_pushed_at(session, repo)
+    if pushed_at:
+        card["updated"] = str(pushed_at)[:10]
+        card["age"] = days_since(pushed_at)
+    if note:
+        # A metadata failure means we have no facts at all — say so and stop.
+        card["note"] = note
+        card["state"] = classify("", "", card["age"], stale_days)
+        card["score"] = compute_score(card["stakes"], None, "", "")
+        card["priority"] = band(card["score"])
         return card
 
-    meta = parse_front_matter(body)
-    if meta is None:
-        card["note"] = "STATE.md has no front-matter block"
-        return card
+    body, state_note = await fetch_state_md(session, repo)
+    meta: dict = {}
+    if body is None:
+        card["note"] = state_note
+    else:
+        parsed, parse_note = parse_front_matter(body)
+        if parsed is None:
+            card["note"] = parse_note
+        else:
+            meta = parsed
 
-    card["project"] = str(meta.get("project") or card["project"])
+    card["project"] = str(meta.get("project") or card["project"]).strip()
+    card["phase"] = normalise_phase(meta.get("phase"))
+    card["stakes"] = normalise_stakes(meta.get("stakes"))
     card["next"] = str(meta.get("next") or "").strip()
     card["blocker"] = str(meta.get("blocker") or "").strip()
 
-    raw_updated = meta.get("updated")
-    card["age"] = days_since(raw_updated)
-    if isinstance(raw_updated, (date, datetime)):
-        card["updated"] = raw_updated.isoformat()[:10]
-    elif raw_updated:
-        card["updated"] = str(raw_updated)[:10]
+    target = to_date(meta.get("target"))
+    if target is not None:
+        card["target"] = target.isoformat()
+        card["days_to_target"] = days_until(target)
 
-    card["state"] = classify(card["blocker"], card["age"], stale_days)
-    if not card["next"]:
+    card["state"] = classify(card["blocker"], card["phase"], card["age"], stale_days)
+    card["score"] = compute_score(
+        card["stakes"], card["days_to_target"], card["blocker"], card["phase"]
+    )
+    card["priority"] = band(card["score"])
+
+    if not card["note"] and not card["next"]:
         card["note"] = "No next action set"
     return card
 
 
-ORDER = {"blocked": 0, "stale": 1, "unknown": 2, "aging": 3, "fresh": 4}
+def sort_cards(cards: list[dict]) -> list[dict]:
+    """Descending by score, then descending by age."""
+    return sorted(
+        cards,
+        key=lambda c: (
+            -c["score"],
+            -(c["age"] if c["age"] is not None else -1),
+        ),
+    )
 
 
 async def refresh(app: web.Application) -> None:
     """Pull every configured repo and cache the result."""
-    options = app["options"]
+    options = load_options()
+    app["options"] = options
+
+    stale_days = int(options.get("stale_days", 14))
     repos = options.get("repos") or []
     if not repos:
-        app["cache"] = {"projects": [], "fetched": None, "error": "No repos configured"}
+        app["cache"] = {
+            "projects": [],
+            "fetched": None,
+            "stale_days": stale_days,
+            "phases": PHASES,
+            "error": "No repos configured",
+        }
         return
 
     headers = {
-        "Accept": "application/vnd.github.raw+json",
         "User-Agent": "gnomon",
         "X-GitHub-Api-Version": "2022-11-28",
     }
@@ -165,33 +334,28 @@ async def refresh(app: web.Application) -> None:
         headers["Authorization"] = f"Bearer {token}"
 
     timeout = aiohttp.ClientTimeout(total=20)
-    stale_days = int(options.get("stale_days", 14))
-
     async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
         cards = await asyncio.gather(
             *(fetch_repo(session, repo, stale_days) for repo in repos)
         )
 
-    cards = sorted(
-        cards,
-        key=lambda c: (ORDER.get(c["state"], 9), -(c["age"] if c["age"] is not None else 0)),
-    )
     app["cache"] = {
-        "projects": cards,
+        "projects": sort_cards(list(cards)),
         "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "stale_days": stale_days,
+        "phases": PHASES,
         "error": None,
     }
     LOG.info("Refreshed %d repos", len(cards))
 
 
 async def poll_loop(app: web.Application) -> None:
-    interval = max(1, int(app["options"].get("poll_minutes", 15))) * 60
     while True:
         try:
             await refresh(app)
         except Exception:  # noqa: BLE001 — a poll failure must not kill the loop
             LOG.exception("Refresh cycle failed")
+        interval = max(1, int(app["options"].get("poll_minutes", 15))) * 60
         await asyncio.sleep(interval)
 
 
@@ -216,10 +380,44 @@ async def on_cleanup(app: web.Application) -> None:
     app["poller"].cancel()
 
 
+def selftest() -> int:
+    """Acceptance tests for the computed-priority formula."""
+    cases = [
+        ("revenue", 420, "", "building", 4.0, "high"),
+        ("revenue", 20, "", "building", 9.6, "high"),
+        ("revenue", -5, "", "shipped", 12.0, "high"),
+        ("product", None, "", "shipped", 2.0, "normal"),
+        ("product", None, "", "parked", 0.4, "low"),
+        ("personal", None, "", "usable", 1.0, "low"),
+        ("personal", None, "waiting on vendor", "shipped", 1.4, "low"),
+    ]
+    failures = 0
+    for stakes, dtt, blocker, phase, want_score, want_band in cases:
+        got_score = compute_score(stakes, dtt, blocker, phase)
+        got_band = band(got_score)
+        ok = got_score == want_score and got_band == want_band
+        failures += not ok
+        target = "no target" if dtt is None else f"target {dtt:+d}d"
+        blocked = "blocked" if blocker else "not blocked"
+        print(
+            f"{'PASS' if ok else 'FAIL'}  {stakes:8} {target:14} {blocked:11} "
+            f"{phase:8} -> {got_score:5} {got_band:6}"
+            f"{'' if ok else f'  (want {want_score} {want_band})'}"
+        )
+    print(f"\n{len(cases) - failures}/{len(cases)} passed")
+    return 1 if failures else 0
+
+
 def main() -> None:
     app = web.Application()
     app["options"] = load_options()
-    app["cache"] = {"projects": [], "fetched": None, "error": "Loading..."}
+    app["cache"] = {
+        "projects": [],
+        "fetched": None,
+        "stale_days": int(app["options"].get("stale_days", 14)),
+        "phases": PHASES,
+        "error": "Loading...",
+    }
 
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/projects", handle_projects)
@@ -234,4 +432,6 @@ def main() -> None:
 
 
 if __name__ == "__main__":
+    if "--selftest" in sys.argv:
+        raise SystemExit(selftest())
     main()
