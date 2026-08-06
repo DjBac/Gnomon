@@ -1,0 +1,69 @@
+# ---- macOS ----
+.DS_Store
+.DS_Store?
+._*
+.AppleDouble
+.LSOverride
+.Spotlight-V100
+.TemporaryItems
+.Trashes
+.fseventsd
+.VolumeIcon.icns
+.com.apple.timemachine.donotpresent
+.AppleDB
+.AppleDesktop
+Network Trash Folder
+Temporary Items
+Icon
+
+# ---- Editors / IDEs ----
+.vscode/
+.idea/
+*.iml
+*.swp
+*.swo
+*~
+.history/
+
+# ---- Agent / assistant tooling (never versioned) ----
+.claude/
+CLAUDE.md
+AGENTS.md
+.cursor/
+.cursorrules
+.aider*
+.github/copilot-instructions.md
+
+# ---- Python ----
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+.venv/
+venv/
+env/
+.mypy_cache/
+.ruff_cache/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# ---- Secrets / runtime ----
+.env
+.env.*
+*.pem
+*.key
+*.p12
+secrets.yaml
+options.json
+data/
+
+# ---- Archives / scratch ----
+*.zip
+*.tar
+*.tar.gz
+tmp/
+scratch/

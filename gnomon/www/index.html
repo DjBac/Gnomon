@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Gnomon</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ink:        #0A0A0C;
+    --ink-raised: #101014;
+    --paper:      #EDE7DC;
+    --muted:      #6E6A64;
+    --hairline:   #1E1E23;
+
+    --blocked: #FF5A45;
+    --stale:   #C9762F;
+    --aging:   #D9A441;
+    --fresh:   #6FAE7E;
+    --unknown: #55525C;
+
+    --gutter: clamp(18px, 5vw, 44px);
+  }
+
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    background: var(--ink);
+    color: var(--paper);
+    font-family: 'JetBrains Mono', ui-monospace, monospace;
+    min-height: 100vh;
+    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
+    position: relative;
+    overflow-x: hidden;
+  }
+
+  /* Grain — keeps the flat dark from reading as a default black page. */
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 100;
+    opacity: 0.035;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  .wrap { max-width: 860px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
+
+  /* ---------- Masthead ---------- */
+
+  header {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 40px 0 22px;
+    border-bottom: 1px solid var(--hairline);
+  }
+
+  .mark {
+    font-size: 11px;
+    letter-spacing: 0.34em;
+    text-transform: uppercase;
+    font-weight: 700;
+  }
+
+  .fetched {
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: var(--muted);
+    text-transform: uppercase;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+
+  button.refresh {
+    background: none;
+    border: 1px solid var(--hairline);
+    color: var(--muted);
+    font: inherit;
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    padding: 5px 11px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: color .18s ease, border-color .18s ease;
+  }
+  button.refresh:hover { color: var(--paper); border-color: var(--muted); }
+  button.refresh:active { transform: translateY(1px); }
+  button.refresh[disabled] { opacity: .4; cursor: default; }
+
+  /* ---------- Tally ---------- */
+
+  .tally {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 20px;
+    padding: 18px 0 34px;
+    font-size: 10px;
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+  .tally span { display: inline-flex; align-items: center; gap: 7px; }
+  .tally i {
+    width: 5px; height: 5px; border-radius: 50%;
+    background: currentColor; font-style: normal;
+  }
+  .tally .c-blocked { color: var(--blocked); }
+  .tally .c-stale   { color: var(--stale); }
+  .tally .c-aging   { color: var(--aging); }
+  .tally .c-fresh   { color: var(--fresh); }
+  .tally b { color: var(--paper); font-weight: 500; }
+
+  /* ---------- Rows ---------- */
+
+  .row {
+    position: relative;
+    padding: 26px 0 26px 22px;
+    border-bottom: 1px solid var(--hairline);
+    animation: rise .5s cubic-bezier(.22,.7,.28,1) both;
+  }
+  .row::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 28px; bottom: 28px;
+    width: 2px;
+    background: var(--accent, var(--unknown));
+    border-radius: 2px;
+  }
+  .row[data-state="blocked"] { --accent: var(--blocked); }
+  .row[data-state="stale"]   { --accent: var(--stale); }
+  .row[data-state="aging"]   { --accent: var(--aging); }
+  .row[data-state="fresh"]   { --accent: var(--fresh); }
+  .row[data-state="stale"], .row[data-state="unknown"] { opacity: .62; }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(9px); }
+    to   { opacity: 1; transform: none; }
+  }
+  .row[data-state="stale"], .row[data-state="unknown"] {
+    animation-name: rise-dim;
+  }
+  @keyframes rise-dim {
+    from { opacity: 0; transform: translateY(9px); }
+    to   { opacity: .62; transform: none; }
+  }
+
+  .meta {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+    margin-bottom: 11px;
+  }
+
+  .project {
+    font-size: 10px;
+    letter-spacing: 0.22em;
+    text-transform: uppercase;
+    color: var(--muted);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .age {
+    font-size: 10px;
+    letter-spacing: 0.1em;
+    color: var(--accent, var(--muted));
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  /* The inversion: the next action is the headline, not the project name.
+     You are here to read what to do, not to be reminded what exists. */
+  .next {
+    font-family: 'Instrument Serif', Georgia, serif;
+    font-size: clamp(21px, 4.4vw, 29px);
+    line-height: 1.24;
+    letter-spacing: -0.005em;
+    color: var(--paper);
+    text-wrap: balance;
+  }
+  .next.empty {
+    font-style: italic;
+    color: var(--muted);
+  }
+
+  .blocker {
+    margin-top: 13px;
+    font-size: 12px;
+    line-height: 1.55;
+    color: var(--blocked);
+    display: flex;
+    gap: 9px;
+  }
+  .blocker::before {
+    content: 'BLOCKED';
+    font-size: 9px;
+    letter-spacing: 0.18em;
+    padding: 3px 6px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    height: fit-content;
+    flex-shrink: 0;
+    opacity: .8;
+  }
+
+  .note {
+    margin-top: 11px;
+    font-size: 11px;
+    color: var(--muted);
+    letter-spacing: 0.04em;
+  }
+
+  .empty-state {
+    padding: 90px 0;
+    text-align: center;
+    color: var(--muted);
+    font-size: 12px;
+    letter-spacing: 0.1em;
+    line-height: 2;
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="mark">Gnomon</div>
+    <div class="fetched">
+      <span id="stamp">—</span>
+      <button class="refresh" id="refresh">Refresh</button>
+    </div>
+  </header>
+
+  <div class="tally" id="tally"></div>
+  <main id="board"></main>
+</div>
+
+<script>
+(function () {
+  const board = document.getElementById('board');
+  const tally = document.getElementById('tally');
+  const stamp = document.getElementById('stamp');
+  const button = document.getElementById('refresh');
+
+  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+
+  function ageLabel(card) {
+    if (card.age === null || card.age === undefined) return 'no date';
+    if (card.age <= 0) return 'today';
+    if (card.age === 1) return '1 day';
+    if (card.age < 21) return card.age + ' days';
+    if (card.age < 60) return Math.round(card.age / 7) + ' weeks';
+    return Math.round(card.age / 30) + ' months';
+  }
+
+  function renderTally(cards) {
+    const counts = { blocked: 0, stale: 0, aging: 0, fresh: 0 };
+    cards.forEach((c) => { if (c.state in counts) counts[c.state]++; });
+    const labels = { blocked: 'blocked', stale: 'stale', aging: 'aging', fresh: 'active' };
+    tally.innerHTML = Object.keys(counts)
+      .filter((k) => counts[k] > 0)
+      .map((k) => `<span class="c-${k}"><i></i><b>${counts[k]}</b>&nbsp;${labels[k]}</span>`)
+      .join('');
+  }
+
+  function renderBoard(cards) {
+    if (!cards.length) {
+      board.innerHTML = '<div class="empty-state">No repositories configured.<br>' +
+        'Add them in the add-on configuration tab.</div>';
+      return;
+    }
+    board.innerHTML = cards.map((c, i) => {
+      const next = c.next
+        ? `<div class="next">${esc(c.next)}</div>`
+        : `<div class="next empty">No next action set</div>`;
+      const blocker = c.blocker ? `<div class="blocker">${esc(c.blocker)}</div>` : '';
+      const note = c.note && c.next ? `<div class="note">${esc(c.note)}</div>` : '';
+      return `
+        <article class="row" data-state="${esc(c.state)}" style="animation-delay:${i * 45}ms">
+          <div class="meta">
+            <div class="project">${esc(c.project)}</div>
+            <div class="age">${esc(ageLabel(c))}</div>
+          </div>
+          ${next}${blocker}${note}
+        </article>`;
+    }).join('');
+  }
+
+  function renderStamp(iso) {
+    if (!iso) { stamp.textContent = '—'; return; }
+    const d = new Date(iso);
+    stamp.textContent = 'synced ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  }
+
+  async function load(force) {
+    button.disabled = true;
+    try {
+      const res = await fetch(force ? 'api/refresh' : 'api/projects', {
+        method: force ? 'POST' : 'GET',
+        cache: 'no-store'
+      });
+      const data = await res.json();
+      renderTally(data.projects || []);
+      renderBoard(data.projects || []);
+      renderStamp(data.fetched);
+    } catch (err) {
+      board.innerHTML = '<div class="empty-state">Could not reach the add-on.<br>' +
+        'Check the add-on log.</div>';
+    } finally {
+      button.disabled = false;
+    }
+  }
+
+  button.addEventListener('click', () => load(true));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') load(false);
+  });
+
+  load(false);
+  setInterval(() => load(false), 120000);
+})();
+</script>
+</body>
+</html>
