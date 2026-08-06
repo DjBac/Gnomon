@@ -3,7 +3,7 @@ name: Gnomon
 version: "0.1.0"
 slug: gnomon
 description: At-a-glance status board for your GitHub projects, read from STATE.md
-url: https://github.com/DjBac/gnomon/tree/main/gnomon
+url: https://github.com/DjBac/Gnomon/tree/main/gnomon
 arch:
   - aarch64
   - amd64

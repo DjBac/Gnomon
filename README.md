@@ -7,7 +7,7 @@ Home Assistant add-on repository.
 Settings → Add-ons → Add-on Store → ⋮ → **Repositories**, then add:
 
 ```
-https://github.com/DjBac/gnomon
+https://github.com/DjBac/Gnomon
 ```
 
 ## Add-ons

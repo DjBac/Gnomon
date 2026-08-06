@@ -27,7 +27,6 @@ Icon
 
 # ---- Agent / assistant tooling (never versioned) ----
 .claude/
-CLAUDE.md
 AGENTS.md
 .cursor/
 .cursorrules
