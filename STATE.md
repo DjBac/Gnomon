@@ -2,9 +2,15 @@
 project: Gnomon
 phase: usable
 stakes: personal
-target:
-next: "Backfill STATE.md headers across remaining repos"
+target: ""
 blocker: ""
+steps:
+  - "[x] Six-field header with computed priority"
+  - "[x] Freshness derived from the repo's last push"
+  - "[x] Published as a Home Assistant add-on repository"
+  - "[x] Get the add-on running in Home Assistant"
+  - "[>] Backfill STATE.md headers across remaining repos"
+  - "[ ] Panel redesign for the six-field card"
 ---
 
 # Gnomon
