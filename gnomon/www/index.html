@@ -1,335 +1,536 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="color-scheme" content="dark">
 <title>Gnomon</title>
-<link rel="preconnect" href="https://fonts.googleapis.com">
-<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-<link href="https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
 <style>
-  :root {
-    --ink:        #0A0A0C;
-    --ink-raised: #101014;
-    --paper:      #EDE7DC;
-    --muted:      #6E6A64;
-    --hairline:   #1E1E23;
+:root {
+  --bg: #0B0D10;
+  --bg-glow: #141A21;
+  --card: rgba(255, 255, 255, .045);
+  --card-hi: rgba(255, 255, 255, .10);
+  --hair: rgba(255, 255, 255, .09);
+  --text: #F2F4F7;
+  --dim: rgba(242, 244, 247, .52);
+  --dimmer: rgba(242, 244, 247, .34);
+  --track: rgba(255, 255, 255, .10);
+  --red: #FF6A58;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+}
 
-    --blocked: #FF5A45;
-    --stale:   #C9762F;
-    --aging:   #D9A441;
-    --fresh:   #6FAE7E;
-    --unknown: #55525C;
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 
-    --gutter: clamp(18px, 5vw, 44px);
-  }
+html { -webkit-text-size-adjust: 100%; }
 
-  * { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  margin: 0;
+  background: var(--bg);
+  background-image:
+    radial-gradient(90rem 40rem at 50% -18rem, var(--bg-glow) 0%, transparent 70%);
+  background-attachment: fixed;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 15px;
+  line-height: 1.45;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  -webkit-font-smoothing: antialiased;
+}
 
-  html { -webkit-text-size-adjust: 100%; }
+.wrap { max-width: 46rem; margin: 0 auto; padding: 1.25rem .875rem 3rem; }
 
-  body {
-    background: var(--ink);
-    color: var(--paper);
-    font-family: 'JetBrains Mono', ui-monospace, monospace;
-    min-height: 100vh;
-    padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom);
-    position: relative;
-    overflow-x: hidden;
-  }
+/* ---------- header ---------- */
 
-  /* Grain — keeps the flat dark from reading as a default black page. */
-  body::before {
-    content: '';
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 100;
-    opacity: 0.035;
-    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)'/%3E%3C/svg%3E");
-  }
+.top {
+  display: flex;
+  align-items: baseline;
+  gap: .75rem;
+  margin-bottom: .25rem;
+}
 
-  .wrap { max-width: 860px; margin: 0 auto; padding: 0 var(--gutter) 80px; }
+h1 {
+  font-size: 1.5rem;
+  font-weight: 700;
+  letter-spacing: -.02em;
+  margin: 0;
+  flex: 1;
+}
 
-  /* ---------- Masthead ---------- */
+.synced {
+  font-family: var(--mono);
+  font-size: .6875rem;
+  color: var(--dimmer);
+  letter-spacing: .01em;
+}
 
-  header {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 16px;
-    padding: 40px 0 22px;
-    border-bottom: 1px solid var(--hairline);
-  }
+button.refresh {
+  font: inherit;
+  font-size: .75rem;
+  font-weight: 590;
+  color: var(--text);
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: 980px;
+  padding: .3rem .75rem;
+  cursor: pointer;
+  transition: background .18s ease, opacity .18s ease;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+}
+button.refresh:hover { background: var(--card-hi); }
+button.refresh:active { opacity: .6; }
+button.refresh[disabled] { opacity: .4; cursor: default; }
 
-  .mark {
-    font-size: 11px;
-    letter-spacing: 0.34em;
-    text-transform: uppercase;
-    font-weight: 700;
-  }
+/* ---------- stat tiles ---------- */
 
-  .fetched {
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    color: var(--muted);
-    text-transform: uppercase;
-    display: flex;
-    align-items: center;
-    gap: 12px;
-  }
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: .4rem;
+  margin: 1rem 0 1.25rem;
+}
 
-  button.refresh {
-    background: none;
-    border: 1px solid var(--hairline);
-    color: var(--muted);
-    font: inherit;
-    font-size: 10px;
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    padding: 5px 11px;
-    border-radius: 999px;
-    cursor: pointer;
-    transition: color .18s ease, border-color .18s ease;
-  }
-  button.refresh:hover { color: var(--paper); border-color: var(--muted); }
-  button.refresh:active { transform: translateY(1px); }
-  button.refresh[disabled] { opacity: .4; cursor: default; }
+.tile {
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: .75rem;
+  padding: .55rem .5rem .5rem;
+  text-align: center;
+  -webkit-backdrop-filter: blur(20px);
+  backdrop-filter: blur(20px);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+}
 
-  /* ---------- Tally ---------- */
+.tile b {
+  display: block;
+  font-family: var(--mono);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  letter-spacing: -.02em;
+  line-height: 1.2;
+}
 
-  .tally {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 6px 20px;
-    padding: 18px 0 34px;
-    font-size: 10px;
-    letter-spacing: 0.16em;
-    text-transform: uppercase;
-    color: var(--muted);
-  }
-  .tally span { display: inline-flex; align-items: center; gap: 7px; }
-  .tally i {
-    width: 5px; height: 5px; border-radius: 50%;
-    background: currentColor; font-style: normal;
-  }
-  .tally .c-blocked { color: var(--blocked); }
-  .tally .c-stale   { color: var(--stale); }
-  .tally .c-aging   { color: var(--aging); }
-  .tally .c-fresh   { color: var(--fresh); }
-  .tally b { color: var(--paper); font-weight: 500; }
+.tile span {
+  display: block;
+  font-size: .5625rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--dimmer);
+  margin-top: .15rem;
+}
 
-  /* ---------- Rows ---------- */
+/* ---------- card ---------- */
 
-  .row {
-    position: relative;
-    padding: 26px 0 26px 22px;
-    border-bottom: 1px solid var(--hairline);
-    animation: rise .5s cubic-bezier(.22,.7,.28,1) both;
-  }
-  .row::before {
-    content: '';
-    position: absolute;
-    left: 0; top: 28px; bottom: 28px;
-    width: 2px;
-    background: var(--accent, var(--unknown));
-    border-radius: 2px;
-  }
-  .row[data-state="blocked"] { --accent: var(--blocked); }
-  .row[data-state="stale"]   { --accent: var(--stale); }
-  .row[data-state="aging"]   { --accent: var(--aging); }
-  .row[data-state="fresh"]   { --accent: var(--fresh); }
-  .row[data-state="stale"], .row[data-state="unknown"] { opacity: .62; }
+.card {
+  --accent: rgba(255, 255, 255, .3);
+  position: relative;
+  background: var(--card);
+  border: 1px solid var(--hair);
+  border-radius: 1rem;
+  padding: .875rem .9rem .8rem;
+  margin-bottom: .5rem;
+  cursor: pointer;
+  overflow: hidden;
+  -webkit-backdrop-filter: blur(24px) saturate(150%);
+  backdrop-filter: blur(24px) saturate(150%);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .055), 0 1px 2px rgba(0, 0, 0, .3);
+  transition: background .2s ease, opacity .25s ease;
+  animation: rise .32s cubic-bezier(.22, .9, .3, 1) both;
+}
 
-  @keyframes rise {
-    from { opacity: 0; transform: translateY(9px); }
-    to   { opacity: 1; transform: none; }
-  }
-  .row[data-state="stale"], .row[data-state="unknown"] {
-    animation-name: rise-dim;
-  }
-  @keyframes rise-dim {
-    from { opacity: 0; transform: translateY(9px); }
-    to   { opacity: .62; transform: none; }
-  }
+.card:hover { background: var(--card-hi); }
 
-  .meta {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 14px;
-    margin-bottom: 11px;
-  }
+.card::before {
+  content: "";
+  position: absolute;
+  left: 0; top: 0; bottom: 0;
+  width: 2px;
+  background: var(--accent);
+  opacity: .85;
+}
 
-  .project {
-    font-size: 10px;
-    letter-spacing: 0.22em;
-    text-transform: uppercase;
-    color: var(--muted);
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
-  }
+.card[data-state="stale"], .card[data-state="parked"] { opacity: .55; }
+.card[data-state="stale"]:hover, .card[data-state="parked"]:hover { opacity: .8; }
 
-  .age {
-    font-size: 10px;
-    letter-spacing: 0.1em;
-    color: var(--accent, var(--muted));
-    white-space: nowrap;
-    flex-shrink: 0;
-  }
+@keyframes rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+.card[data-state="stale"], .card[data-state="parked"] { animation-name: rise-dim; }
+@keyframes rise-dim {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: .55; transform: none; }
+}
 
-  /* The inversion: the next action is the headline, not the project name.
-     You are here to read what to do, not to be reminded what exists. */
-  .next {
-    font-family: 'Instrument Serif', Georgia, serif;
-    font-size: clamp(21px, 4.4vw, 29px);
-    line-height: 1.24;
-    letter-spacing: -0.005em;
-    color: var(--paper);
-    text-wrap: balance;
-  }
-  .next.empty {
-    font-style: italic;
-    color: var(--muted);
-  }
+.row1 { display: flex; align-items: center; gap: .5rem; }
 
-  .blocker {
-    margin-top: 13px;
-    font-size: 12px;
-    line-height: 1.55;
-    color: var(--blocked);
-    display: flex;
-    gap: 9px;
-  }
-  .blocker::before {
-    content: 'BLOCKED';
-    font-size: 9px;
-    letter-spacing: 0.18em;
-    padding: 3px 6px;
-    border: 1px solid currentColor;
-    border-radius: 3px;
-    height: fit-content;
-    flex-shrink: 0;
-    opacity: .8;
-  }
+.project {
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: -.01em;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
 
-  .note {
-    margin-top: 11px;
-    font-size: 11px;
-    color: var(--muted);
-    letter-spacing: 0.04em;
-  }
+.pill-high {
+  font-family: var(--mono);
+  font-size: .5625rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  color: var(--accent);
+  border: 1px solid currentColor;
+  border-radius: 980px;
+  padding: .05rem .35rem;
+  flex: none;
+  opacity: .9;
+}
 
-  .empty-state {
-    padding: 90px 0;
-    text-align: center;
-    color: var(--muted);
-    font-size: 12px;
-    letter-spacing: 0.1em;
-    line-height: 2;
-  }
+.age {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--mono);
+  font-size: .6875rem;
+  color: var(--dimmer);
+  letter-spacing: -.01em;
+}
+
+/* ---------- progress ---------- */
+
+.prog { display: flex; align-items: center; gap: .5rem; margin: .55rem 0 .5rem; }
+
+.segs { display: flex; gap: 2px; flex: 1; min-width: 0; }
+
+.seg {
+  height: 3px;
+  flex: 1;
+  border-radius: 2px;
+  background: var(--track);
+}
+.seg.done { background: var(--accent); }
+.seg.current { background: var(--accent); opacity: .5; }
+
+.count {
+  flex: none;
+  font-family: var(--mono);
+  font-size: .625rem;
+  color: var(--dimmer);
+  letter-spacing: -.01em;
+}
+
+/* ---------- current step ---------- */
+
+.next {
+  font-size: .96875rem;
+  line-height: 1.35;
+  letter-spacing: -.005em;
+}
+
+.next.empty { color: var(--dimmer); font-style: italic; }
+
+/* ---------- meta ---------- */
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .4rem;
+  margin-top: .5rem;
+  font-size: .5938rem;
+  text-transform: uppercase;
+  letter-spacing: .07em;
+  color: var(--dimmer);
+}
+.meta i { font-style: normal; opacity: .45; }
+
+/* ---------- blocker ---------- */
+
+.blocker {
+  margin-top: .625rem;
+  padding-top: .625rem;
+  border-top: 1px solid var(--hair);
+  display: flex;
+  gap: .45rem;
+  align-items: flex-start;
+  color: var(--red);
+  font-size: .8125rem;
+  line-height: 1.35;
+}
+
+.blocker b {
+  font-family: var(--mono);
+  font-size: .5625rem;
+  font-weight: 600;
+  letter-spacing: .08em;
+  border: 1px solid currentColor;
+  border-radius: 980px;
+  padding: .05rem .3rem;
+  flex: none;
+  margin-top: .1rem;
+}
+
+/* ---------- expanded step list ---------- */
+
+.steps {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows .3s cubic-bezier(.22, .9, .3, 1);
+}
+.card.open .steps { grid-template-rows: 1fr; }
+
+.steps-inner { overflow: hidden; min-height: 0; }
+
+.steps ol {
+  list-style: none;
+  margin: .7rem 0 .1rem;
+  padding: .7rem 0 0;
+  border-top: 1px solid var(--hair);
+  display: flex;
+  flex-direction: column;
+  gap: .4rem;
+}
+
+.steps li {
+  display: flex;
+  gap: .5rem;
+  align-items: flex-start;
+  font-size: .8125rem;
+  line-height: 1.35;
+  color: var(--dimmer);
+}
+
+.steps li .mark {
+  flex: none;
+  width: .75rem;
+  text-align: center;
+  font-family: var(--mono);
+  font-size: .6875rem;
+  line-height: 1.5;
+}
+
+.steps li.done .mark { color: var(--dim); }
+.steps li.current { color: var(--text); }
+.steps li.current .mark { color: var(--accent); }
+.steps li.todo .mark { color: var(--dimmer); opacity: .6; }
+
+/* ---------- notices ---------- */
+
+.note {
+  margin-top: .45rem;
+  font-size: .6875rem;
+  color: var(--dimmer);
+  font-style: italic;
+}
+
+.empty-state, .error {
+  text-align: center;
+  color: var(--dim);
+  padding: 3rem 1rem;
+  font-size: .875rem;
+}
+.error { color: var(--red); }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}
 </style>
 </head>
 <body>
 <div class="wrap">
-  <header>
-    <div class="mark">Gnomon</div>
-    <div class="fetched">
-      <span id="stamp">—</span>
-      <button class="refresh" id="refresh">Refresh</button>
-    </div>
-  </header>
+  <div class="top">
+    <h1>Gnomon</h1>
+    <span class="synced" id="synced"></span>
+    <button class="refresh" id="refresh" type="button">Refresh</button>
+  </div>
 
-  <div class="tally" id="tally"></div>
-  <main id="board"></main>
+  <div class="tiles">
+    <div class="tile"><b id="t-high">—</b><span>High</span></div>
+    <div class="tile"><b id="t-blocked">—</b><span>Blocked</span></div>
+    <div class="tile"><b id="t-stale">—</b><span>Stale</span></div>
+    <div class="tile"><b id="t-total">—</b><span>Tracked</span></div>
+  </div>
+
+  <div id="board"><div class="empty-state">Loading…</div></div>
 </div>
 
 <script>
 (function () {
-  const board = document.getElementById('board');
-  const tally = document.getElementById('tally');
-  const stamp = document.getElementById('stamp');
-  const button = document.getElementById('refresh');
+  "use strict";
 
-  const esc = (s) => String(s ?? '').replace(/[&<>"']/g, (c) => (
-    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
-  ));
+  var ACCENT = {
+    blocked: "#FF6A58",
+    stale:   "#C98A4B",
+    aging:   "#F2C45C",
+    fresh:   "#58D68D",
+    parked:  "#7FA8D9",
+    unknown: "rgba(255,255,255,.3)"
+  };
 
-  function ageLabel(card) {
-    if (card.age === null || card.age === undefined) return 'no date';
-    if (card.age <= 0) return 'today';
-    if (card.age === 1) return '1 day';
-    if (card.age < 21) return card.age + ' days';
-    if (card.age < 60) return Math.round(card.age / 7) + ' weeks';
-    return Math.round(card.age / 30) + ' months';
+  var board   = document.getElementById("board");
+  var refresh = document.getElementById("refresh");
+  var open    = Object.create(null);   // repo -> expanded, in memory only
+  var timer   = null;
+
+  function esc(s) {
+    return String(s == null ? "" : s)
+      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
-  function renderTally(cards) {
-    const counts = { blocked: 0, stale: 0, aging: 0, fresh: 0 };
-    cards.forEach((c) => { if (c.state in counts) counts[c.state]++; });
-    const labels = { blocked: 'blocked', stale: 'stale', aging: 'aging', fresh: 'active' };
-    tally.innerHTML = Object.keys(counts)
-      .filter((k) => counts[k] > 0)
-      .map((k) => `<span class="c-${k}"><i></i><b>${counts[k]}</b>&nbsp;${labels[k]}</span>`)
-      .join('');
+  function ageLabel(a) {
+    if (a === null || a === undefined) return "no date";
+    if (a <= 0) return "today";
+    if (a === 1) return "1 day";
+    if (a < 21) return a + " days";
+    if (a < 60) return Math.round(a / 7) + " weeks";
+    return Math.round(a / 30) + " months";
   }
 
-  function renderBoard(cards) {
+  function targetLabel(d) {
+    if (d === null || d === undefined) return "";
+    if (d < 0) {
+      var o = -d;
+      return (o < 60 ? o + "d" : Math.round(o / 30) + "mo") + " overdue";
+    }
+    if (d === 0) return "due today";
+    return (d < 60 ? d + "d" : Math.round(d / 30) + "mo") + " left";
+  }
+
+  function segments(card) {
+    var total = card.steps_total || 0;
+    if (!total) return "";
+    var out = "";
+    for (var i = 0; i < card.steps.length; i++) {
+      var st = card.steps[i].state;
+      var cls = st === "done" ? "seg done" : (st === "current" ? "seg current" : "seg");
+      out += '<div class="' + cls + '"></div>';
+    }
+    return '<div class="prog"><div class="segs">' + out + "</div>" +
+           '<span class="count">' + card.steps_done + " / " + total + "</span></div>";
+  }
+
+  function stepList(card) {
+    if (!card.steps || !card.steps.length) return "";
+    var items = card.steps.map(function (s) {
+      var mark = s.state === "done" ? "✓" : (s.state === "current" ? "●" : "○");
+      return '<li class="' + esc(s.state) + '"><span class="mark">' + mark +
+             "</span><span>" + esc(s.text) + "</span></li>";
+    }).join("");
+    return '<div class="steps"><div class="steps-inner"><ol>' + items + "</ol></div></div>";
+  }
+
+  function render(cards) {
     if (!cards.length) {
-      board.innerHTML = '<div class="empty-state">No repositories configured.<br>' +
-        'Add them in the add-on configuration tab.</div>';
+      board.innerHTML = '<div class="empty-state">No projects tracked yet.</div>';
       return;
     }
-    board.innerHTML = cards.map((c, i) => {
-      const next = c.next
-        ? `<div class="next">${esc(c.next)}</div>`
-        : `<div class="next empty">No next action set</div>`;
-      const blocker = c.blocker ? `<div class="blocker">${esc(c.blocker)}</div>` : '';
-      const note = c.note && c.next ? `<div class="note">${esc(c.note)}</div>` : '';
-      return `
-        <article class="row" data-state="${esc(c.state)}" style="animation-delay:${i * 45}ms">
-          <div class="meta">
-            <div class="project">${esc(c.project)}</div>
-            <div class="age">${esc(ageLabel(c))}</div>
-          </div>
-          ${next}${blocker}${note}
-        </article>`;
-    }).join('');
+    board.innerHTML = cards.map(function (c, i) {
+      var accent = ACCENT[c.state] || ACCENT.unknown;
+
+      var meta = [];
+      if (c.phase) meta.push(esc(c.phase));
+      if (c.stakes) meta.push(esc(c.stakes));
+      var t = targetLabel(c.days_to_target);
+      if (t) meta.push(esc(t));
+      var metaRow = meta.length
+        ? '<div class="meta">' + meta.join(' <i>·</i> ') + "</div>" : "";
+
+      var next = c.next
+        ? '<div class="next">' + esc(c.next) + "</div>"
+        : '<div class="next empty">Nothing in flight</div>';
+
+      var blocker = c.blocker
+        ? '<div class="blocker"><b>BLOCKED</b><span>' + esc(c.blocker) + "</span></div>"
+        : "";
+
+      var note = c.note ? '<div class="note">' + esc(c.note) + "</div>" : "";
+
+      var high = c.priority === "high" ? '<span class="pill-high">HIGH</span>' : "";
+
+      return '<article class="card' + (open[c.repo] ? " open" : "") + '"' +
+             ' data-state="' + esc(c.state) + '"' +
+             ' data-repo="' + esc(c.repo) + '"' +
+             ' style="--accent:' + accent + ";animation-delay:" + (i * 40) + 'ms">' +
+               '<div class="row1"><span class="project">' + esc(c.project) + "</span>" +
+                 high + '<span class="age">' + esc(ageLabel(c.age)) + "</span></div>" +
+               segments(c) + next + metaRow + blocker + note + stepList(c) +
+             "</article>";
+    }).join("");
   }
 
-  function renderStamp(iso) {
-    if (!iso) { stamp.textContent = '—'; return; }
-    const d = new Date(iso);
-    stamp.textContent = 'synced ' + d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  function tally(cards) {
+    var high = 0, blocked = 0, stale = 0;
+    cards.forEach(function (c) {
+      if (c.priority === "high") high++;
+      if (c.state === "blocked") blocked++;
+      if (c.state === "stale") stale++;
+    });
+    document.getElementById("t-high").textContent    = high;
+    document.getElementById("t-blocked").textContent = blocked;
+    document.getElementById("t-stale").textContent   = stale;
+    document.getElementById("t-total").textContent   = cards.length;
   }
 
-  async function load(force) {
-    button.disabled = true;
-    try {
-      const res = await fetch(force ? 'api/refresh' : 'api/projects', {
-        method: force ? 'POST' : 'GET',
-        cache: 'no-store'
-      });
-      const data = await res.json();
-      renderTally(data.projects || []);
-      renderBoard(data.projects || []);
-      renderStamp(data.fetched);
-    } catch (err) {
-      board.innerHTML = '<div class="empty-state">Could not reach the add-on.<br>' +
-        'Check the add-on log.</div>';
-    } finally {
-      button.disabled = false;
-    }
+  function stamp(iso) {
+    var el = document.getElementById("synced");
+    if (!iso) { el.textContent = ""; return; }
+    var d = new Date(iso);
+    el.textContent = isNaN(d) ? "" : d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   }
 
-  button.addEventListener('click', () => load(true));
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') load(false);
+  function load(force) {
+    refresh.disabled = true;
+    fetch(force ? "api/refresh" : "api/projects", {
+      method: force ? "POST" : "GET",
+      headers: { "Accept": "application/json" }
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("HTTP " + r.status);
+        return r.json();
+      })
+      .then(function (data) {
+        var cards = data.projects || [];
+        tally(cards);
+        render(cards);
+        stamp(data.fetched);
+        if (data.error) {
+          var banner = document.createElement("div");
+          banner.className = "error";
+          banner.textContent = data.error;
+          board.insertBefore(banner, board.firstChild);
+        }
+      })
+      .catch(function (err) {
+        board.textContent = "";
+        var msg = document.createElement("div");
+        msg.className = "error";
+        msg.textContent = err.message;
+        board.appendChild(msg);
+      })
+      .then(function () { refresh.disabled = false; });
+  }
+
+  board.addEventListener("click", function (e) {
+    var card = e.target.closest(".card");
+    if (!card) return;
+    var repo = card.getAttribute("data-repo");
+    open[repo] = !open[repo];
+    card.classList.toggle("open", open[repo]);
   });
 
+  refresh.addEventListener("click", function () { load(true); });
+
+  document.addEventListener("visibilitychange", function () {
+    if (!document.hidden) load(false);
+  });
+
+  timer = setInterval(function () {
+    if (!document.hidden) load(false);
+  }, 120000);
+
   load(false);
-  setInterval(() => load(false), 120000);
 })();
 </script>
 </body>

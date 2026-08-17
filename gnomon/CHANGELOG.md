@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.3.0
+
+Reads the `steps` list, and the panel becomes a roadmap rather than a single line.
+
+- Parses `steps` from the header: `[x]` done, `[>]` current, `[ ]` todo
+- `next` is now derived from the `[>]` step. The field name is unchanged, so
+  anything reading it keeps working
+- Legacy headers still render: a repo with a `next` string and no `steps` is
+  used as-is
+- Each card carries `steps`, `steps_done` and `steps_total`
+- Tolerates a missing `steps` key, an empty list, unrecognised prefixes
+  (kept verbatim, treated as todo), more than one `[>]` (first wins) and
+  non-text entries — each surfaced as a note rather than a failure
+- Panel rewritten: segmented per-step progress bar, tap a card to expand the
+  full step list, state-coloured accent, stat tiles for high / blocked /
+  stale / tracked
+- Fixes the 0.2.0 regression where every card rendered empty, because the
+  seeded headers carry `steps` and no `next`
+
 ## 0.2.0
 
 **Breaking header change.** The `STATE.md` front-matter schema is not backward

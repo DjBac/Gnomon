@@ -16,8 +16,11 @@ project: Nostos
 phase: building
 stakes: revenue
 target: 2027-09-30
-next: "Wire Stripe webhook to delivery unlock"
 blocker: ""
+steps:
+  - "[x] Branded delivery pages"
+  - "[>] Wire Stripe webhook to delivery unlock"
+  - "[ ] Timeline review UI"
 ---
 ```
 
@@ -30,8 +33,49 @@ header is the only part anything depends on.
 | `phase` | `idea`, `building`, `usable`, `shipped`, `parked` | empty |
 | `stakes` | `revenue`, `product`, `personal` | `personal` |
 | `target` | a date, or empty | no target — treated as not urgent |
-| `next` | free text, may be empty | empty |
 | `blocker` | free text, empty means not blocked | empty |
+| `steps` | a list of prefixed strings, see below | no roadmap on the card |
+
+### Steps
+
+`steps` is the roadmap. Each entry is a string beginning with one of three
+prefixes:
+
+| Prefix | Meaning |
+|---|---|
+| `[x] ` | done |
+| `[>] ` | the current step — **at most one per repo** |
+| `[ ] ` | not started |
+
+```yaml
+steps:
+  - "[x] Branded delivery pages"
+  - "[>] Wire Stripe webhook to delivery unlock"
+  - "[ ] Timeline review UI"
+```
+
+**Every entry must be double-quoted.** An unquoted `[x]` opens a YAML flow
+sequence and the file will not parse.
+
+Write steps as outcomes rather than tasks — "Timeline review UI", not "refactor
+the player" — and keep each under about 60 characters so it fits a phone-width
+card. Fewer real steps beat a padded list.
+
+The parser is deliberately forgiving, because a header that fails is worse than
+a header that is slightly wrong. An unrecognised prefix is kept verbatim and
+treated as todo; if more than one `[>]` appears the first wins and the rest
+become todo; a missing key, an empty list, a non-list value and non-text
+entries all yield an empty roadmap and a note on the card. None of them take
+the board down.
+
+### `next` is derived, not written
+
+There is no `next` field any more — the current action is whichever step
+carries `[>]`. The API still exposes `next` on each card, now holding that
+step's text, so nothing downstream had to change.
+
+A repo that still uses the old `next` string and has no `steps` renders from
+it unchanged. Old headers keep working; they simply show no progress bar.
 
 Unknown keys are ignored rather than rejected, so a repo can carry extra header
 fields for its own purposes. Malformed YAML is caught and surfaced as a note on
@@ -157,9 +201,10 @@ current is to update the header as a by-product of finishing work, rather than
 as a separate thing to remember:
 
 > Before closing out a working session, update the front-matter block at the
-> top of `STATE.md`: set `next` to the single most useful next action, set
-> `blocker` if something external is holding this up (empty string otherwise),
-> and correct `phase`, `stakes` or `target` if the shape of the project has
+> top of `STATE.md`: mark newly finished steps `[x]`, move the single `[>]` to
+> the true current step (or leave none if nothing is in flight), set `blocker`
+> if something external is holding this up (empty string otherwise), and
+> correct `phase`, `stakes` or `target` if the shape of the project has
 > changed. There is no date to maintain — freshness comes from the last push.
 
 Put that wherever the repo keeps its contributor instructions.

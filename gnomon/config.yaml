@@ -1,6 +1,6 @@
 ---
 name: Gnomon
-version: "0.2.0"
+version: "0.3.0"
 slug: gnomon
 description: At-a-glance status board for your GitHub projects, read from STATE.md
 url: https://github.com/DjBac/Gnomon/tree/main/gnomon

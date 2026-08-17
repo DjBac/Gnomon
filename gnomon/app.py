@@ -45,6 +45,9 @@ PORT = 8099
 FRESH_MAX = 6
 
 PHASES = ["idea", "building", "usable", "shipped", "parked"]
+
+# Step prefixes, in the order they appear in a header.
+STEP_PREFIXES = {"[x]": "done", "[>]": "current", "[ ]": "todo"}
 STAKES_BASE = {"revenue": 4.0, "product": 2.0, "personal": 1.0}
 DEFAULT_STAKES = "personal"
 
@@ -136,6 +139,51 @@ def normalise_stakes(value) -> str:
     return stakes if stakes in STAKES_BASE else DEFAULT_STAKES
 
 
+def parse_steps(raw) -> tuple[list[dict], str]:
+    """Read a `steps` list into typed entries. Returns (steps, note).
+
+    Each entry is `{"text": ..., "state": "done"|"current"|"todo"}`. An
+    unrecognised prefix is kept verbatim and treated as todo; only the first
+    `[>]` counts as current. A malformed list yields a note, never an
+    exception.
+    """
+    if raw is None:
+        return [], ""
+    if not isinstance(raw, list):
+        return [], "STATE.md steps is not a list"
+
+    steps: list[dict] = []
+    skipped = 0
+    seen_current = False
+    for item in raw:
+        if not isinstance(item, str):
+            skipped += 1
+            continue
+        text = item.strip()
+        state = "todo"
+        for prefix, kind in STEP_PREFIXES.items():
+            if text.startswith(prefix):
+                state = kind
+                text = text[len(prefix):].strip()
+                break
+        if state == "current":
+            if seen_current:
+                state = "todo"
+            else:
+                seen_current = True
+        steps.append({"text": text, "state": state})
+
+    note = f"{skipped} step entries were not text" if skipped else ""
+    return steps, note
+
+
+def current_step(steps: list[dict]) -> str:
+    for step in steps:
+        if step["state"] == "current":
+            return step["text"]
+    return ""
+
+
 def urgency(days_to_target: int | None) -> float:
     """Multiplier derived from how close the target date is."""
     if days_to_target is None:
@@ -195,6 +243,9 @@ def new_card(repo: str) -> dict:
         "target": "",
         "days_to_target": None,
         "next": "",
+        "steps": [],
+        "steps_done": 0,
+        "steps_total": 0,
         "blocker": "",
         "updated": None,
         "age": None,
@@ -278,8 +329,19 @@ async def fetch_repo(session: aiohttp.ClientSession, repo: str, stale_days: int)
     card["project"] = str(meta.get("project") or card["project"]).strip()
     card["phase"] = normalise_phase(meta.get("phase"))
     card["stakes"] = normalise_stakes(meta.get("stakes"))
-    card["next"] = str(meta.get("next") or "").strip()
     card["blocker"] = str(meta.get("blocker") or "").strip()
+
+    steps, steps_note = parse_steps(meta.get("steps"))
+    card["steps"] = steps
+    card["steps_total"] = len(steps)
+    card["steps_done"] = sum(1 for s in steps if s["state"] == "done")
+    # `next` is derived from the current step; a legacy header without
+    # `steps` still renders from its own `next` field.
+    card["next"] = current_step(steps) or (
+        "" if steps else str(meta.get("next") or "").strip()
+    )
+    if steps_note and not card["note"]:
+        card["note"] = steps_note
 
     target = to_date(meta.get("target"))
     if target is not None:
@@ -408,6 +470,47 @@ def selftest() -> int:
     return 1 if failures else 0
 
 
+def selftest_steps() -> int:
+    """Acceptance tests for the step parser."""
+    seven = [
+        "[x] Proposal page, static and data-driven",
+        "[x] View tracking and holds",
+        "[x] Admin dashboard with Blob upload",
+        "[x] Venue management and treatment drafting",
+        "[x] Domain redirects and the Phase 7 gate",
+        "[>] Drafting quality for venues nobody has visited",
+        "[ ] Ship the proposal system",
+    ]
+    cases = [
+        ("normal 7-step list", {"steps": seven}, 7, 5, "Drafting quality for venues nobody has visited"),
+        ("empty list", {"steps": []}, 0, 0, ""),
+        ("missing key", {"project": "X"}, 0, 0, ""),
+        ("two current markers", {"steps": ["[>] first", "[>] second", "[x] done"]}, 3, 1, "first"),
+        ("unprefixed string", {"steps": ["no prefix here", "[x] done"]}, 2, 1, ""),
+        ("legacy next, no steps", {"next": "Wire the webhook"}, 0, 0, "Wire the webhook"),
+        ("steps not a list", {"steps": "oops"}, 0, 0, ""),
+        ("non-string entries", {"steps": ["[x] real", 42, None]}, 1, 1, ""),
+    ]
+    failures = 0
+    for label, meta, want_total, want_done, want_next in cases:
+        steps, note = parse_steps(meta.get("steps"))
+        total = len(steps)
+        done = sum(1 for s in steps if s["state"] == "done")
+        nxt = current_step(steps) or ("" if steps else str(meta.get("next") or "").strip())
+        ok = total == want_total and done == want_done and nxt == want_next
+        failures += not ok
+        print(
+            f"{'PASS' if ok else 'FAIL'}  {label:22} total={total} done={done} "
+            f"next={nxt!r}{'  note=' + note if note else ''}"
+            f"{'' if ok else f'  (want {want_total}/{want_done}/{want_next!r})'}"
+        )
+    # states of the unprefixed case, spelled out
+    steps, _ = parse_steps(["no prefix here", "[x] done", "[>] now"])
+    print(f"\nprefix handling: {[(s['text'], s['state']) for s in steps]}")
+    print(f"{len(cases) - failures}/{len(cases)} passed")
+    return 1 if failures else 0
+
+
 def main() -> None:
     app = web.Application()
     app["options"] = load_options()
@@ -433,5 +536,5 @@ def main() -> None:
 
 if __name__ == "__main__":
     if "--selftest" in sys.argv:
-        raise SystemExit(selftest())
+        raise SystemExit(selftest() or selftest_steps())
     main()

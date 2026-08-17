@@ -9,8 +9,8 @@ steps:
   - "[x] Freshness derived from the repo's last push"
   - "[x] Published as a Home Assistant add-on repository"
   - "[x] Get the add-on running in Home Assistant"
-  - "[>] Backfill STATE.md headers across remaining repos"
-  - "[ ] Panel redesign for the six-field card"
+  - "[x] Backfill STATE.md headers across remaining repos"
+  - "[>] Panel redesign for the six-field card"
 ---
 
 # Gnomon
