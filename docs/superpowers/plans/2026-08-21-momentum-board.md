@@ -254,7 +254,7 @@ git commit -m "Split the backend into focused modules"
 **Interfaces:**
 - Consumes: `github.meta_note(status) -> str` from Task 1.
 - Produces:
-  - `github.fetch_commits(session, repo, now=None) -> tuple[list | None, str]` — raw commit payload or `None`, plus a note.
+  - `github.fetch_commits(session, repo, since) -> tuple[list | None, str]` — raw commit payload or `None`, plus a note. `since` is the ISO timestamp from `ranking.commit_cutoffs`.
   - `ranking.count_commits(payload, cut7) -> tuple[int, int]` — `(commits_7d, commits_30d)`.
   - `ranking.commit_cutoffs(now) -> tuple[str, str]` — `(since_iso, cut7_date)`.
 
