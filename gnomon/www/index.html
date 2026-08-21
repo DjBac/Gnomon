@@ -164,6 +164,55 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   to   { opacity: .55; transform: none; }
 }
 
+.card.hero { padding: 1.1rem 1rem 1rem; margin-bottom: .6rem; }
+.card.hero .project { font-size: .875rem; font-weight: 590; color: var(--dim); }
+.card.hero .hero-next {
+  font-size: 1.3125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: -.02em;
+  margin: .1rem 0;
+}
+.card.hero .hero-next.empty {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--dimmer);
+  font-style: italic;
+}
+.card.hero .prog { margin: .5rem 0 .7rem; }
+
+.badge {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--mono);
+  font-size: .5938rem;
+  font-weight: 600;
+  letter-spacing: .07em;
+  color: var(--accent);
+  border: 1px solid currentColor;
+  border-radius: 980px;
+  padding: .1rem .4rem;
+}
+
+.card.rescue { margin-bottom: .7rem; }
+.rescue-tag {
+  font-family: var(--mono);
+  font-size: .5625rem;
+  font-weight: 600;
+  letter-spacing: .09em;
+  color: var(--accent);
+  margin-bottom: .3rem;
+}
+.card.rescue .project { font-size: .9375rem; }
+.card.rescue .age { margin-left: auto; }
+.card.rescue .next { font-size: .875rem; color: var(--dim); margin-top: .2rem; }
+
+.card.tail { padding: .7rem .9rem .6rem; margin-bottom: .35rem; }
+.card.tail .project { font-size: .875rem; font-weight: 500; }
+.card.tail .age { margin-left: auto; }
+.card.tail .count { margin-left: .4rem; }
+.card.tail .segs { margin-top: .45rem; }
+
 .row1 { display: flex; align-items: baseline; gap: .5rem; }
 
 .project {
@@ -370,7 +419,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   </div>
 
   <div class="tiles">
-    <div class="tile"><b id="t-high">—</b><span>High</span></div>
+    <div class="tile"><b id="t-active">—</b><span>Active</span></div>
     <div class="tile"><b id="t-blocked">—</b><span>Blocked</span></div>
     <div class="tile"><b id="t-stale">—</b><span>Stale</span></div>
     <div class="tile"><b id="t-total">—</b><span>Tracked</span></div>
@@ -397,125 +446,170 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   var open    = Object.create(null);   // repo -> expanded, in memory only
   var timer   = null;
 
-  function esc(s) {
-    return String(s == null ? "" : s)
-      .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-      .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null && text !== "") node.textContent = text;
+    return node;
   }
 
-  // 4 -> "4.0", 13.44 -> "13.44"; keeps the arithmetic readable
-  function num(n) {
-    return Number.isInteger(n) ? n.toFixed(1) : String(n);
+  function accent(c) {
+    return ACCENT[c.state] || ACCENT.unknown;
   }
 
-  function ageLabel(a) {
-    if (a === null || a === undefined) return "no date";
-    if (a <= 0) return "today";
-    if (a === 1) return "1 day";
-    if (a < 21) return a + " days";
-    if (a < 60) return Math.round(a / 7) + " weeks";
-    return Math.round(a / 30) + " months";
+  function activityLabel(c) {
+    if (c.momentum === null || c.momentum === undefined) return "unknown";
+    if (c.commits_7d) return c.commits_7d + "/wk";
+    if (c.commits_30d) return c.commits_30d + "/mo";
+    return "quiet";
   }
 
-  function targetLabel(d) {
-    if (d === null || d === undefined) return "";
-    if (d < 0) {
-      var o = -d;
-      return (o < 60 ? o + "d" : Math.round(o / 30) + "mo") + " overdue";
-    }
-    if (d === 0) return "due today";
-    return (d < 60 ? d + "d" : Math.round(d / 30) + "mo") + " left";
+  function cardShell(c, className) {
+    var card = el("article", className);
+    card.setAttribute("data-state", c.state);
+    card.setAttribute("data-repo", c.repo);
+    card.style.setProperty("--accent", accent(c));
+    if (open[c.repo]) card.classList.add("open");
+    return card;
   }
 
-  function segments(card) {
-    var total = card.steps_total || 0;
-    if (!total) return "";
-    var out = "";
-    for (var i = 0; i < card.steps.length; i++) {
-      var st = card.steps[i].state;
-      var cls = st === "done" ? "seg done" : (st === "current" ? "seg current" : "seg");
-      out += '<div class="' + cls + '"></div>';
-    }
-    return '<div class="prog"><div class="segs">' + out + "</div>" +
-           '<span class="count">' + card.steps_done + " / " + total + "</span></div>";
+  function metaRow(parts) {
+    var row = el("div", "meta");
+    parts.filter(Boolean).forEach(function (part, i) {
+      if (i) row.appendChild(el("i", null, "·"));
+      row.appendChild(el("span", null, part));
+    });
+    return row;
   }
 
-  // The arithmetic that put this card where it is. Factors come from the
-  // backend, so the shown reasoning always multiplies to the sorted score.
-  function why(card, rank, total) {
-    var parts = card.score_factors || [];
-    if (!parts.length) return "";
-    var sum = parts.map(function (p) {
-      return "<b>" + esc(p.label) + "</b> " + num(p.factor);
-    }).join(" × ");
-    return '<div class="why">' + sum + " = <em>" + num(card.score) + "</em> " +
-           esc(card.priority) + " · rank " + rank + " of " + total + "</div>";
+  function blockerBlock(c) {
+    if (!c.blocker) return null;
+    var wrap = el("div", "blocker");
+    wrap.appendChild(el("b", null, "BLOCKED"));
+    wrap.appendChild(el("span", null, c.blocker));
+    return wrap;
   }
 
-  function details(card, rank, total) {
-    var inner = "";
-    if (card.steps && card.steps.length) {
-      var items = card.steps.map(function (s) {
-        var mark = s.state === "done" ? "✓" : (s.state === "current" ? "●" : "○");
-        return '<li class="' + esc(s.state) + '"><span class="mark">' + mark +
-               "</span><span>" + esc(s.text) + "</span></li>";
-      }).join("");
-      inner += "<ol>" + items + "</ol>";
-    }
-    inner += why(card, rank, total);
-    if (!inner) return "";
-    return '<div class="steps"><div class="steps-inner">' + inner + "</div></div>";
+  function segments(c) {
+    if (!c.steps_total) return null;
+    var segs = el("div", "segs");
+    c.steps.forEach(function (s) {
+      var cls = "seg";
+      if (s.state === "done") cls += " done";
+      else if (s.state === "current") cls += " current";
+      segs.appendChild(el("div", cls));
+    });
+    return segs;
+  }
+
+  function progressRow(c) {
+    var segs = segments(c);
+    if (!segs) return null;
+    var row = el("div", "prog");
+    row.appendChild(segs);
+    row.appendChild(el("span", "count", c.steps_done + " / " + c.steps_total));
+    return row;
+  }
+
+  function stepList(c) {
+    if (!c.steps || !c.steps.length) return null;
+    var list = el("ol");
+    c.steps.forEach(function (s) {
+      var item = el("li", s.state);
+      var mark = s.state === "done" ? "✓" : (s.state === "current" ? "●" : "○");
+      item.appendChild(el("span", "mark", mark));
+      item.appendChild(el("span", null, s.text));
+      list.appendChild(item);
+    });
+    return list;
+  }
+
+  function detailBlock(c) {
+    var steps = stepList(c);
+    var reason = c.order_reason
+      ? c.order_reason + (c.debt_reason ? " · " + c.debt_reason : "")
+      : "";
+    if (!steps && !reason) return null;
+    var wrap = el("div", "steps");
+    var inner = el("div", "steps-inner");
+    if (steps) inner.appendChild(steps);
+    if (reason) inner.appendChild(el("div", "why", reason));
+    wrap.appendChild(inner);
+    return wrap;
+  }
+
+  function addIf(parent, child) {
+    if (child) parent.appendChild(child);
+  }
+
+  function heroCard(c) {
+    var card = cardShell(c, "card hero");
+    var row = el("div", "row1");
+    row.appendChild(el("span", "project", c.project));
+    // order_badge can be "" when every repo's metadata call failed; an empty
+    // badge span would still draw its border, so it's only added when there
+    // is text to show.
+    if (c.order_badge) row.appendChild(el("span", "badge", c.order_badge));
+    card.appendChild(row);
+
+    addIf(card, progressRow(c));
+    card.appendChild(
+      c.next ? el("div", "hero-next", c.next)
+             : el("div", "hero-next empty", "Nothing in flight")
+    );
+    addIf(card, blockerBlock(c));
+    card.appendChild(metaRow([c.stakes, c.phase, activityLabel(c)]));
+    addIf(card, detailBlock(c));
+    return card;
+  }
+
+  function rescueCard(c) {
+    var card = cardShell(c, "card rescue");
+    card.appendChild(el("div", "rescue-tag", "◈ NEEDS RESCUE"));
+    var row = el("div", "row1");
+    row.appendChild(el("span", "project", c.project));
+    row.appendChild(el("span", "age", c.debt_reason));
+    card.appendChild(row);
+    if (c.next) card.appendChild(el("div", "next", c.next));
+    addIf(card, detailBlock(c));
+    return card;
+  }
+
+  function tailRow(c) {
+    var card = cardShell(c, "card tail");
+    var row = el("div", "row1");
+    row.appendChild(el("span", "project", c.project));
+    row.appendChild(el("span", "age", activityLabel(c)));
+    row.appendChild(
+      el("span", "count", c.steps_total ? c.steps_done + "/" + c.steps_total : "—")
+    );
+    card.appendChild(row);
+    addIf(card, segments(c));
+    addIf(card, detailBlock(c));
+    return card;
   }
 
   function render(cards) {
+    board.textContent = "";
     if (!cards.length) {
-      board.innerHTML = '<div class="empty-state">No projects tracked yet.</div>';
+      board.appendChild(el("div", "empty-state", "No projects tracked yet."));
       return;
     }
-    board.innerHTML = cards.map(function (c, i) {
-      var accent = ACCENT[c.state] || ACCENT.unknown;
-
-      var meta = [];
-      if (c.phase) meta.push(esc(c.phase));
-      if (c.stakes) meta.push(esc(c.stakes));
-      var t = targetLabel(c.days_to_target);
-      if (t) meta.push(esc(t));
-      var metaRow = meta.length
-        ? '<div class="meta">' + meta.join(' <i>·</i> ') + "</div>" : "";
-
-      var next = c.next
-        ? '<div class="next">' + esc(c.next) + "</div>"
-        : '<div class="next empty">Nothing in flight</div>';
-
-      var blocker = c.blocker
-        ? '<div class="blocker"><b>BLOCKED</b><span>' + esc(c.blocker) + "</span></div>"
-        : "";
-
-      var note = c.note ? '<div class="note">' + esc(c.note) + "</div>" : "";
-
-      var high = c.priority === "high" ? '<span class="pill-high">HIGH</span>' : "";
-
-      return '<article class="card' + (open[c.repo] ? " open" : "") + '"' +
-             ' data-state="' + esc(c.state) + '"' +
-             ' data-repo="' + esc(c.repo) + '"' +
-             ' style="--accent:' + accent + ";animation-delay:" + (i * 40) + 'ms">' +
-               '<div class="row1"><span class="project">' + esc(c.project) + "</span>" +
-                 high + '<span class="score">' + num(c.score) + "</span>" +
-                 '<span class="age">' + esc(ageLabel(c.age)) + "</span></div>" +
-               segments(c) + next + metaRow + blocker + note +
-               details(c, i + 1, cards.length) +
-             "</article>";
-    }).join("");
+    cards.forEach(function (c) {
+      if (c.role === "hero") board.appendChild(heroCard(c));
+      else if (c.role === "rescue") board.appendChild(rescueCard(c));
+      else board.appendChild(tailRow(c));
+    });
   }
 
   function tally(cards) {
-    var high = 0, blocked = 0, stale = 0;
+    var active = 0, blocked = 0, stale = 0;
     cards.forEach(function (c) {
-      if (c.priority === "high") high++;
+      if (c.commits_7d) active++;
       if (c.state === "blocked") blocked++;
       if (c.state === "stale") stale++;
     });
-    document.getElementById("t-high").textContent    = high;
+    document.getElementById("t-active").textContent  = active;
     document.getElementById("t-blocked").textContent = blocked;
     document.getElementById("t-stale").textContent   = stale;
     document.getElementById("t-total").textContent   = cards.length;
