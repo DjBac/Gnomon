@@ -18,7 +18,7 @@
 - **`state.py` and `ranking.py` MUST NOT import `aiohttp`.** This is what keeps tests runnable outside the container. Enforced by a test in Task 1.
 - **Relative fetch paths only** in `index.html` — a leading `/` breaks HA ingress.
 - **No `localStorage`, no `sessionStorage`, no external fonts, CDNs or scripts** in `index.html`.
-- **Escape every interpolated string** in the panel.
+- **Build the panel's DOM with `createElement` / `textContent`.** Never assign `innerHTML`, and never concatenate HTML strings. Enforced by a check in Task 6.
 - **Do not modify** `build.yaml`, `run.sh`, `repository.yaml`, `README.md`, `.gitignore`, `icon.png`, `logo.png`. The **Dockerfile is modified exactly once**, in Task 1.
 - **Zero migration.** No `STATE.md` in any repo may need editing.
 - Python: 4-space indent, type hints on signatures, minimal comments — only where non-obvious.
@@ -1167,16 +1167,34 @@ git commit -m "Assemble cards from momentum and debt"
 - Modify: `gnomon/www/index.html`
 
 **Interfaces:**
-- Consumes: the card shape from Task 5 — `role`, `order_reason`, `order_badge`, `debt_reason`, `commits_7d`, `momentum`, plus the unchanged display fields.
+- Consumes: the card shape from Task 5 — `role`, `order_reason`, `order_badge`, `debt_reason`, `commits_7d`, `commits_30d`, `momentum`, plus the unchanged display fields.
 - Produces: nothing consumed by later tasks.
 
-Existing JS functions to replace: `num` (407), `ageLabel` (411), `targetLabel` (420), `segments` (430), `why` (445), `details` (455), `render` (470), `tally` (511). Keep `esc` (400), `stamp` (524), `load` (531) and the three event listeners unchanged, except that `render` is called the same way.
+The panel is rebuilt with DOM construction rather than HTML strings. Delete these
+existing JS functions entirely: `esc` (400), `num` (407), `ageLabel` (411),
+`targetLabel` (420), `segments` (430), `why` (445), `details` (455), `render`
+(470), `tally` (511). Keep `stamp` (524), `load` (531) and the three event
+listeners unchanged.
 
-- [ ] **Step 1: Replace the render layer**
+With every value written through `textContent`, no escaping helper is needed —
+a string can never be interpreted as markup.
 
-Replace `num`, `targetLabel`, `why`, `details`, `render` and `tally` with:
+- [ ] **Step 1: Write the element helpers**
+
+Insert directly after the `ACCENT` map:
 
 ```javascript
+  function el(tag, className, text) {
+    var node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== undefined && text !== null && text !== "") node.textContent = text;
+    return node;
+  }
+
+  function accent(c) {
+    return ACCENT[c.state] || ACCENT.unknown;
+  }
+
   function activityLabel(c) {
     if (c.momentum === null || c.momentum === undefined) return "unknown";
     if (c.commits_7d) return c.commits_7d + "/wk";
@@ -1184,108 +1202,150 @@ Replace `num`, `targetLabel`, `why`, `details`, `render` and `tally` with:
     return "quiet";
   }
 
-  function segments(card) {
-    var total = card.steps_total || 0;
-    if (!total) return "";
-    var out = "";
-    for (var i = 0; i < card.steps.length; i++) {
-      var st = card.steps[i].state;
-      out += '<div class="seg' + (st === "done" ? " done" : (st === "current" ? " current" : "")) + '"></div>';
-    }
-    return '<div class="segs">' + out + "</div>";
+  function cardShell(c, className) {
+    var card = el("article", className);
+    card.setAttribute("data-state", c.state);
+    card.setAttribute("data-repo", c.repo);
+    card.style.setProperty("--accent", accent(c));
+    if (open[c.repo]) card.classList.add("open");
+    return card;
   }
 
-  function stepList(card) {
-    if (!card.steps || !card.steps.length) return "";
-    var items = card.steps.map(function (s) {
-      var mark = s.state === "done" ? "✓" : (s.state === "current" ? "●" : "○");
-      return '<li class="' + esc(s.state) + '"><span class="mark">' + mark +
-             "</span><span>" + esc(s.text) + "</span></li>";
-    }).join("");
-    return "<ol>" + items + "</ol>";
+  function metaRow(parts) {
+    var row = el("div", "meta");
+    parts.filter(Boolean).forEach(function (part, i) {
+      if (i) row.appendChild(el("i", null, "\u00b7"));
+      row.appendChild(el("span", null, part));
+    });
+    return row;
   }
 
-  function detailBlock(card) {
-    var inner = stepList(card);
-    if (card.order_reason) {
-      inner += '<div class="why">' + esc(card.order_reason) +
-               (card.debt_reason ? " · " + esc(card.debt_reason) : "") + "</div>";
-    }
-    if (!inner) return "";
-    return '<div class="steps"><div class="steps-inner">' + inner + "</div></div>";
+  function blockerBlock(c) {
+    if (!c.blocker) return null;
+    var wrap = el("div", "blocker");
+    wrap.appendChild(el("b", null, "BLOCKED"));
+    wrap.appendChild(el("span", null, c.blocker));
+    return wrap;
+  }
+```
+
+- [ ] **Step 2: Write the progress and detail builders**
+
+```javascript
+  function segments(c) {
+    if (!c.steps_total) return null;
+    var segs = el("div", "segs");
+    c.steps.forEach(function (s) {
+      var cls = "seg";
+      if (s.state === "done") cls += " done";
+      else if (s.state === "current") cls += " current";
+      segs.appendChild(el("div", cls));
+    });
+    return segs;
   }
 
-  function heroCard(c) {
-    var meta = [];
-    if (c.stakes) meta.push(esc(c.stakes));
-    if (c.phase) meta.push(esc(c.phase));
-    meta.push(esc(activityLabel(c)));
-    var next = c.next
-      ? '<div class="hero-next">' + esc(c.next) + "</div>"
-      : '<div class="hero-next empty">Nothing in flight</div>';
-    var blocker = c.blocker
-      ? '<div class="blocker"><b>BLOCKED</b><span>' + esc(c.blocker) + "</span></div>"
+  function progressRow(c) {
+    var segs = segments(c);
+    if (!segs) return null;
+    var row = el("div", "prog");
+    row.appendChild(segs);
+    row.appendChild(el("span", "count", c.steps_done + " / " + c.steps_total));
+    return row;
+  }
+
+  function stepList(c) {
+    if (!c.steps || !c.steps.length) return null;
+    var list = el("ol");
+    c.steps.forEach(function (s) {
+      var item = el("li", s.state);
+      var mark = s.state === "done" ? "\u2713" : (s.state === "current" ? "\u25cf" : "\u25cb");
+      item.appendChild(el("span", "mark", mark));
+      item.appendChild(el("span", null, s.text));
+      list.appendChild(item);
+    });
+    return list;
+  }
+
+  function detailBlock(c) {
+    var steps = stepList(c);
+    var reason = c.order_reason
+      ? c.order_reason + (c.debt_reason ? " \u00b7 " + c.debt_reason : "")
       : "";
-    var count = c.steps_total
-      ? '<span class="count">' + c.steps_done + " / " + c.steps_total + "</span>" : "";
-    return '<article class="card hero" data-state="' + esc(c.state) + '"' +
-           ' data-repo="' + esc(c.repo) + '" style="--accent:' + accent(c) + '">' +
-             '<div class="row1"><span class="project">' + esc(c.project) + "</span>" +
-               '<span class="badge">' + esc(c.order_badge) + "</span></div>" +
-             '<div class="prog">' + segments(c) + count + "</div>" +
-             next + blocker +
-             '<div class="meta">' + meta.join(' <i>·</i> ') + "</div>" +
-             detailBlock(c) +
-           "</article>";
+    if (!steps && !reason) return null;
+    var wrap = el("div", "steps");
+    var inner = el("div", "steps-inner");
+    if (steps) inner.appendChild(steps);
+    if (reason) inner.appendChild(el("div", "why", reason));
+    wrap.appendChild(inner);
+    return wrap;
+  }
+
+  function addIf(parent, child) {
+    if (child) parent.appendChild(child);
+  }
+```
+
+- [ ] **Step 3: Write the three card builders**
+
+```javascript
+  function heroCard(c) {
+    var card = cardShell(c, "card hero");
+    var row = el("div", "row1");
+    row.appendChild(el("span", "project", c.project));
+    row.appendChild(el("span", "badge", c.order_badge));
+    card.appendChild(row);
+
+    addIf(card, progressRow(c));
+    card.appendChild(
+      c.next ? el("div", "hero-next", c.next)
+             : el("div", "hero-next empty", "Nothing in flight")
+    );
+    addIf(card, blockerBlock(c));
+    card.appendChild(metaRow([c.stakes, c.phase, activityLabel(c)]));
+    addIf(card, detailBlock(c));
+    return card;
   }
 
   function rescueCard(c) {
-    return '<article class="card rescue" data-state="' + esc(c.state) + '"' +
-           ' data-repo="' + esc(c.repo) + '" style="--accent:' + accent(c) + '">' +
-             '<div class="rescue-tag">◈ NEEDS RESCUE</div>' +
-             '<div class="row1"><span class="project">' + esc(c.project) + "</span>" +
-               '<span class="age">' + esc(c.debt_reason) + "</span></div>" +
-             (c.next ? '<div class="next">' + esc(c.next) + "</div>" : "") +
-             detailBlock(c) +
-           "</article>";
+    var card = cardShell(c, "card rescue");
+    card.appendChild(el("div", "rescue-tag", "\u25c8 NEEDS RESCUE"));
+    var row = el("div", "row1");
+    row.appendChild(el("span", "project", c.project));
+    row.appendChild(el("span", "age", c.debt_reason));
+    card.appendChild(row);
+    if (c.next) card.appendChild(el("div", "next", c.next));
+    addIf(card, detailBlock(c));
+    return card;
   }
 
   function tailRow(c) {
-    var count = c.steps_total ? c.steps_done + "/" + c.steps_total : "—";
-    return '<article class="card tail" data-state="' + esc(c.state) + '"' +
-           ' data-repo="' + esc(c.repo) + '" style="--accent:' + accent(c) + '">' +
-             '<div class="row1"><span class="project">' + esc(c.project) + "</span>" +
-               '<span class="age">' + esc(activityLabel(c)) + "</span>" +
-               '<span class="count">' + count + "</span></div>" +
-             segments(c) + detailBlock(c) +
-           "</article>";
+    var card = cardShell(c, "card tail");
+    var row = el("div", "row1");
+    row.appendChild(el("span", "project", c.project));
+    row.appendChild(el("span", "age", activityLabel(c)));
+    row.appendChild(
+      el("span", "count", c.steps_total ? c.steps_done + "/" + c.steps_total : "\u2014")
+    );
+    card.appendChild(row);
+    addIf(card, segments(c));
+    addIf(card, detailBlock(c));
+    return card;
   }
+```
 
-  function accent(c) {
-    return ACCENT[c.state] || ACCENT.unknown;
-  }
+- [ ] **Step 4: Write render and tally**
 
+```javascript
   function render(cards) {
+    board.textContent = "";
     if (!cards.length) {
-      board.textContent = "";
-      var empty = document.createElement("div");
-      empty.className = "empty-state";
-      empty.textContent = "No projects tracked yet.";
-      board.appendChild(empty);
+      board.appendChild(el("div", "empty-state", "No projects tracked yet."));
       return;
     }
-    var html = "";
     cards.forEach(function (c) {
-      if (c.role === "hero") html += heroCard(c);
-      else if (c.role === "rescue") html += rescueCard(c);
-      else html += tailRow(c);
-    });
-    board.innerHTML = html;
-    cards.forEach(function (c) {
-      if (open[c.repo]) {
-        var el = board.querySelector('[data-repo="' + CSS.escape(c.repo) + '"]');
-        if (el) el.classList.add("open");
-      }
+      if (c.role === "hero") board.appendChild(heroCard(c));
+      else if (c.role === "rescue") board.appendChild(rescueCard(c));
+      else board.appendChild(tailRow(c));
     });
   }
 
@@ -1303,9 +1363,7 @@ Replace `num`, `targetLabel`, `why`, `details`, `render` and `tally` with:
   }
 ```
 
-`ageLabel` is no longer used and should be deleted.
-
-- [ ] **Step 2: Update the stat tile markup**
+- [ ] **Step 5: Update the stat tile markup**
 
 In the `<div class="tiles">` block, change the first tile's id and label:
 
@@ -1316,7 +1374,7 @@ In the `<div class="tiles">` block, change the first tile's id and label:
     <div class="tile"><b id="t-total">—</b><span>Tracked</span></div>
 ```
 
-- [ ] **Step 3: Add the hero, rescue and tail styles**
+- [ ] **Step 6: Add the hero, rescue and tail styles**
 
 Add after the existing `.card` rules:
 
@@ -1328,9 +1386,14 @@ Add after the existing `.card` rules:
   font-weight: 600;
   line-height: 1.25;
   letter-spacing: -.02em;
-  margin: .1rem 0 .1rem;
+  margin: .1rem 0;
 }
-.card.hero .hero-next.empty { font-size: 1rem; font-weight: 400; color: var(--dimmer); font-style: italic; }
+.card.hero .hero-next.empty {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--dimmer);
+  font-style: italic;
+}
 .card.hero .prog { margin: .5rem 0 .7rem; }
 
 .badge {
@@ -1356,33 +1419,50 @@ Add after the existing `.card` rules:
   margin-bottom: .3rem;
 }
 .card.rescue .project { font-size: .9375rem; }
+.card.rescue .age { margin-left: auto; }
 .card.rescue .next { font-size: .875rem; color: var(--dim); margin-top: .2rem; }
 
 .card.tail { padding: .7rem .9rem .6rem; margin-bottom: .35rem; }
 .card.tail .project { font-size: .875rem; font-weight: 500; }
-.card.tail .segs { margin-top: .45rem; }
+.card.tail .age { margin-left: auto; }
 .card.tail .count { margin-left: .4rem; }
+.card.tail .segs { margin-top: .45rem; }
 ```
 
-- [ ] **Step 4: Verify structure and the constraints**
+- [ ] **Step 7: Verify the constraints statically**
 
 Run:
 ```bash
 cd /Users/Anthony/Code/gnomon
+grep -n 'innerHTML' gnomon/www/index.html && echo "FAIL: innerHTML present" || echo "PASS: no innerHTML"
 grep -nE "fetch\(" gnomon/www/index.html
-grep -nE "['\"]/api/" gnomon/www/index.html || echo "  no leading slash - ok"
-grep -niE 'https?://|cdn|<script src|localStorage|sessionStorage' gnomon/www/index.html || echo "  no external refs - ok"
-grep -c 'esc(' gnomon/www/index.html
+grep -nE "['\"]/api/" gnomon/www/index.html || echo "PASS: no leading slash"
+grep -niE 'https?://|cdn|<script src|localStorage|sessionStorage' gnomon/www/index.html || echo "PASS: no external refs"
+grep -n 'function esc' gnomon/www/index.html && echo "FAIL: esc should be deleted" || echo "PASS: esc removed"
 ```
-Expected: one relative `fetch(` line, then both "ok" lines, then a non-zero `esc(` count.
+Expected: `PASS: no innerHTML`, one relative `fetch(` line, `PASS: no leading slash`, `PASS: no external refs`, `PASS: esc removed`.
 
-- [ ] **Step 5: Render against real data**
+- [ ] **Step 8: Verify the structure under a DOM stub**
 
-Build a payload from the live board and run the panel's own functions under Node, the same technique used to verify 0.3.0 and 0.3.1. Assert: exactly one `card hero`, at most one `card rescue`, the remainder `card tail`, and that an injected `<img src=x onerror=alert(1)>` in a project name comes back escaped.
+Write a throwaway harness OUTSIDE the repo (use the scratch directory, never
+commit it). It must implement only what the panel uses: `createElement`,
+`appendChild`, `className`, `textContent`, `setAttribute`, `classList.add`,
+`style.setProperty`, and `getElementById`. Serialise the resulting tree and
+assert:
 
-Expected: 1 hero, 0 or 1 rescue, the rest tail, no raw `<img` in the output.
+- exactly one element whose class contains `hero`
+- at most one whose class contains `rescue`
+- every remaining card is `tail`
+- a project named `<img src=x onerror=alert(1)>` is stored as a `textContent`
+  string on a node, and appears nowhere as parsed child elements
 
-- [ ] **Step 6: Commit**
+Expected: 1 hero, 0 or 1 rescue, remainder tail, and the injected name present
+only as text.
+
+The last assertion is the XSS gate. With `textContent` it holds structurally
+rather than by escaping — which is why `esc` is gone.
+
+- [ ] **Step 9: Commit**
 
 ```bash
 git add gnomon/www/index.html
