@@ -123,3 +123,29 @@ def current_step(steps: list[dict]) -> str:
         if step["state"] == "current":
             return step["text"]
     return ""
+
+
+WATCHED_FIELDS = ("target", "stakes", "phase")
+
+
+def watched_values(meta: dict) -> dict:
+    """The subset of a header worth remembering between polls."""
+    target = to_date(meta.get("target"))
+    return {
+        "target": target.isoformat() if target else "",
+        "stakes": str(meta.get("stakes") or "").strip().lower(),
+        "phase": normalise_phase(meta.get("phase")),
+    }
+
+
+def vanished(previous: dict, current: dict) -> list[str]:
+    """Watched fields that had a value last time and have none now."""
+    if not previous:
+        return []
+    return [f for f in WATCHED_FIELDS if previous.get(f) and not current.get(f)]
+
+
+def vanished_note(gone: list[str]) -> str:
+    if not gone:
+        return ""
+    return f"{', '.join(gone)} removed since last poll"

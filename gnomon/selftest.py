@@ -393,6 +393,40 @@ def selftest_debt_reason() -> int:
     return 1 if failures else 0
 
 
+def selftest_vanished() -> int:
+    cases = [
+        ("nothing changed",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"}, []),
+        ("target removed",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"},
+         {"target": "", "stakes": "revenue", "phase": "usable"}, ["target"]),
+        ("target changed, not removed",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"},
+         {"target": "2028-01-01", "stakes": "revenue", "phase": "usable"}, []),
+        ("two removed",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"},
+         {"target": "", "stakes": "revenue", "phase": ""}, ["target", "phase"]),
+        ("never had one",
+         {"target": "", "stakes": "personal", "phase": "usable"},
+         {"target": "", "stakes": "personal", "phase": "usable"}, []),
+        ("first sighting",
+         {}, {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"}, []),
+    ]
+    failures = 0
+    for label, prev, cur, want in cases:
+        got = state.vanished(prev, cur)
+        ok = sorted(got) == sorted(want)
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  vanished: {label:28} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+    note = state.vanished_note(["target"])
+    ok = note == "target removed since last poll"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  vanished: note                     {note!r}")
+    return 1 if failures else 0
+
+
 def main() -> int:
     failures = 0
     failures += selftest_no_network_deps()
@@ -407,6 +441,7 @@ def main() -> int:
     failures += selftest_debt_never_orders()
     failures += selftest_rescue_selection()
     failures += selftest_debt_reason()
+    failures += selftest_vanished()
     return 1 if failures else 0
 
 
