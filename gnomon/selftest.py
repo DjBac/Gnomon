@@ -393,6 +393,41 @@ def selftest_debt_reason() -> int:
     return 1 if failures else 0
 
 
+def selftest_watched_values() -> int:
+    """Watched values normalisation for change detection."""
+    cases = [
+        ("YAML date object",
+         {"target": datetime.date(2027, 9, 30), "stakes": "revenue", "phase": "usable"},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"}),
+        ("ISO string date",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"}),
+        ("mixed-case stakes",
+         {"target": "2027-09-30", "stakes": "Revenue", "phase": "usable"},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"}),
+        ("mixed-case phase",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "BUILDING"},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "building"}),
+        ("unrecognised phase",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "bogus"},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": ""}),
+        ("missing fields",
+         {},
+         {"target": "", "stakes": "", "phase": ""}),
+        ("empty target",
+         {"target": "", "stakes": "revenue", "phase": "usable"},
+         {"target": "", "stakes": "revenue", "phase": "usable"}),
+    ]
+    failures = 0
+    for label, meta, want in cases:
+        got = state.watched_values(meta)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  watched_values: {label:24} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+    return 1 if failures else 0
+
+
 def selftest_vanished() -> int:
     cases = [
         ("nothing changed",
@@ -441,6 +476,7 @@ def main() -> int:
     failures += selftest_debt_never_orders()
     failures += selftest_rescue_selection()
     failures += selftest_debt_reason()
+    failures += selftest_watched_values()
     failures += selftest_vanished()
     return 1 if failures else 0
 
