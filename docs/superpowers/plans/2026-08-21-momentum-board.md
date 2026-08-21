@@ -202,7 +202,7 @@ def selftest_no_network_deps() -> int:
     bad = []
     for name in ("state", "ranking"):
         source = (here / f"{name}.py").read_text(encoding="utf-8")
-        if "aiohttp" in source:
+        if "import aiohttp" in source or "from aiohttp" in source:
             bad.append(name)
     print(f"{'FAIL' if bad else 'PASS'}  pure modules free of aiohttp"
           f"{': ' + ', '.join(bad) if bad else ''}")
@@ -210,6 +210,8 @@ def selftest_no_network_deps() -> int:
 ```
 
 Call it first in `main()`. Add `import pathlib` at the top of `selftest.py`. Reading via `__file__` means the test works from any working directory.
+
+The check looks for an actual import statement, not the bare word — the module docstrings above legitimately mention aiohttp in prose.
 
 - [ ] **Step 9: Run the tests again**
 
