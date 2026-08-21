@@ -134,41 +134,53 @@ button.refresh:hover { background: var(--surface-hi); }
 button.refresh:active { opacity: .6; }
 button.refresh[disabled] { opacity: .4; cursor: default; }
 
-/* ---------- stat tiles ---------- */
+/* ---------- summary ---------- */
 
-.tiles {
-  display: grid;
-  grid-template-columns: repeat(4, 1fr);
-  gap: .4rem;
-  margin: 1rem 0 1.25rem;
-}
+#summary { margin: 1rem 0 1.1rem; }
 
-.tile {
+.summary {
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: .75rem;
-  padding: .55rem .5rem .5rem;
-  text-align: center;
-  -webkit-backdrop-filter: blur(20px);
-  backdrop-filter: blur(20px);
+  border-radius: var(--r-xl);
+  padding: .85rem .9rem .8rem;
   box-shadow: var(--shadow-card);
+  -webkit-backdrop-filter: var(--blur);
+  backdrop-filter: var(--blur);
 }
 
-.tile b {
-  display: block;
-  font-size: 1.0625rem;
-  font-weight: 600;
-  letter-spacing: -.02em;
-  line-height: 1.2;
-}
+.sumrow { display: flex; gap: .9rem; align-items: center; }
+.sumtext { min-width: 0; }
 
-.tile span {
-  display: block;
-  font-size: .5625rem;
+.sumtext .hdr {
+  font-size: var(--fs-micro);
   text-transform: uppercase;
-  letter-spacing: .07em;
+  letter-spacing: var(--track-caps);
   color: var(--text-3);
+}
+.sumtext .big {
+  font-size: var(--fs-num);
+  font-weight: 640;
+  letter-spacing: var(--track-tight);
   margin-top: .15rem;
+}
+.sumtext .sub {
+  font-size: var(--fs-caption);
+  color: var(--text-2);
+  margin-top: .1rem;
+}
+
+.ring { flex: none; }
+.ring-track { stroke: var(--track); }
+.ring-fill { stroke: var(--ok); }
+
+.stakes { display: flex; height: 5px; border-radius: var(--r-bar); overflow: hidden; margin: .75rem 0 .4rem; }
+.stakes i { display: block; }
+.stakekey {
+  display: flex; gap: .7rem;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--text-3);
 }
 
 /* ---------- card ---------- */
@@ -432,12 +444,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     <button class="refresh" id="refresh" type="button">Refresh</button>
   </div>
 
-  <div class="tiles">
-    <div class="tile"><b id="t-active">—</b><span>Active</span></div>
-    <div class="tile"><b id="t-blocked">—</b><span>Blocked</span></div>
-    <div class="tile"><b id="t-stale">—</b><span>Stale</span></div>
-    <div class="tile"><b id="t-total">—</b><span>Tracked</span></div>
-  </div>
+  <div id="summary"></div>
 
   <div id="board"><div class="empty-state">Loading…</div></div>
 </div>
@@ -556,6 +563,96 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     if (child) parent.appendChild(child);
   }
 
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var RING_C = 251.3;
+  var STAKES_ORDER = ["revenue", "product", "personal"];
+
+  function svgEl(tag, attrs) {
+    var node = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs).forEach(function (k) { node.setAttribute(k, attrs[k]); });
+    return node;
+  }
+
+  // Argus ring geometry: viewBox 92, r=40, stroke=8, circumference 251.3,
+  // rotated -90 so it starts at twelve o'clock.
+  function completionRing(done, total) {
+    if (!total) return null;
+    var pct = Math.round(100 * done / total);
+    var offset = Math.round(RING_C * (1 - done / total) * 100) / 100;
+    var svg = svgEl("svg", {
+      "class": "ring", width: "76", height: "76", viewBox: "0 0 92 92",
+      "aria-label": pct + " percent complete"
+    });
+    svg.appendChild(svgEl("circle", {
+      "class": "ring-track", cx: "46", cy: "46", r: "40",
+      fill: "none", "stroke-width": "8"
+    }));
+    svg.appendChild(svgEl("circle", {
+      "class": "ring-fill", cx: "46", cy: "46", r: "40",
+      fill: "none", "stroke-width": "8", "stroke-linecap": "round",
+      "stroke-dasharray": String(RING_C),
+      "stroke-dashoffset": String(offset),
+      transform: "rotate(-90 46 46)"
+    }));
+    return svg;
+  }
+
+  function idleCount(cards) {
+    return cards.filter(function (c) {
+      return c.next && typeof c.commits_7d === "number" && c.commits_7d <= 2;
+    }).length;
+  }
+
+  function summaryLine(cards) {
+    var done = 0, total = 0, blocked = 0, stale = 0;
+    cards.forEach(function (c) {
+      done += c.steps_done || 0;
+      total += c.steps_total || 0;
+      if (c.state === "blocked") blocked++;
+      if (c.state === "stale") stale++;
+    });
+    var idle = idleCount(cards);
+    var parts = [];
+    if (total) parts.push(done + " of " + total + " steps · " + Math.round(100 * done / total) + "%");
+    if (idle) parts.push(idle + " idle");
+    if (blocked) parts.push(blocked + " blocked");
+    if (stale) parts.push(stale + " stale");
+    return parts.join(" · ");
+  }
+
+  function weekTotal(cards) {
+    return cards.reduce(function (n, c) {
+      return n + (typeof c.commits_7d === "number" ? c.commits_7d : 0);
+    }, 0);
+  }
+
+  function stakesBar(cards) {
+    var by = { revenue: 0, product: 0, personal: 0 };
+    var total = 0;
+    cards.forEach(function (c) {
+      if (typeof c.commits_7d !== "number") return;
+      var key = by.hasOwnProperty(c.stakes) ? c.stakes : "personal";
+      by[key] += c.commits_7d;
+      total += c.commits_7d;
+    });
+    if (!total) return null;
+    var wrap = el("div");
+    var bar = el("div", "stakes");
+    var key = el("div", "stakekey");
+    var tone = { revenue: "var(--ok)", product: "var(--run)", personal: "var(--stale-c)" };
+    STAKES_ORDER.forEach(function (k) {
+      var pct = Math.round(100 * by[k] / total);
+      var seg = el("i");
+      seg.style.setProperty("width", pct + "%");
+      seg.style.setProperty("background", tone[k]);
+      bar.appendChild(seg);
+      key.appendChild(el("span", null, pct + "% " + k));
+    });
+    wrap.appendChild(bar);
+    wrap.appendChild(key);
+    return wrap;
+  }
+
   function heroCard(c) {
     var card = cardShell(c, "card hero");
     var row = el("div", "row1");
@@ -625,17 +722,29 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     tail.forEach(function (c) { board.appendChild(tailRow(c)); });
   }
 
-  function tally(cards) {
-    var active = 0, blocked = 0, stale = 0;
-    cards.forEach(function (c) {
-      if (typeof c.commits_7d === "number" && c.commits_7d > 0) active++;
-      if (c.state === "blocked") blocked++;
-      if (c.state === "stale") stale++;
-    });
-    document.getElementById("t-active").textContent  = active;
-    document.getElementById("t-blocked").textContent = blocked;
-    document.getElementById("t-stale").textContent   = stale;
-    document.getElementById("t-total").textContent   = cards.length;
+  function renderSummary(cards) {
+    var host = document.getElementById("summary");
+    host.textContent = "";
+    if (!cards.length) return;
+
+    var done = 0, total = 0;
+    cards.forEach(function (c) { done += c.steps_done || 0; total += c.steps_total || 0; });
+
+    var panel = el("div", "summary");
+    var row = el("div", "sumrow");
+    addIf(row, completionRing(done, total));
+
+    var text = el("div", "sumtext");
+    text.appendChild(el("div", "hdr", "this week"));
+    var known = cards.some(function (c) { return typeof c.commits_7d === "number"; });
+    text.appendChild(el("div", "big", known ? weekTotal(cards) + " commits" : "activity unknown"));
+    var line = summaryLine(cards);
+    if (line) text.appendChild(el("div", "sub", line));
+    row.appendChild(text);
+    panel.appendChild(row);
+
+    addIf(panel, stakesBar(cards));
+    host.appendChild(panel);
   }
 
   function stamp(iso) {
@@ -657,7 +766,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
       })
       .then(function (data) {
         var cards = data.projects || [];
-        tally(cards);
+        renderSummary(cards);
         render(cards);
         stamp(data.fetched);
         if (data.error) {
