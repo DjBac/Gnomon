@@ -5,7 +5,6 @@ from __future__ import annotations
 import datetime
 
 FRESH_MAX = 6
-DEFAULT_STAKES = "personal"
 MOMENTUM_RECENT_DAYS = 7
 MOMENTUM_WINDOW_DAYS = 30
 RECENT_WEIGHT = 3

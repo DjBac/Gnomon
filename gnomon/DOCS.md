@@ -33,8 +33,13 @@ header is the only part anything depends on.
 | `phase` | `idea`, `building`, `usable`, `shipped`, `parked` | empty |
 | `stakes` | `revenue`, `product`, `personal` | `personal` |
 | `target` | a date, or empty | no target — treated as not urgent |
-| `blocker` | free text, empty means not blocked | empty |
+| `blocker` | free text, an external dependency — empty means not blocked | empty |
 | `steps` | a list of prefixed strings, see below | no roadmap on the card |
+
+> **Waiting on yourself is not a blocker.** A blocker is an external dependency —
+> a vendor key, someone else's review, an outage. Your own next action belongs in
+> `steps` as the `[>]`. A blocker adds 1.5 to debt and can pull a project into
+> the rescue slot, so mislabelling one costs you a real alert.
 
 ### Steps
 
@@ -81,6 +86,15 @@ Unknown keys are ignored rather than rejected, so a repo can carry extra header
 fields for its own purposes. Malformed YAML is caught and surfaced as a note on
 the card — it never takes the board down.
 
+### A vanished field is a note, not silence
+
+The backend remembers `target`, `stakes` and `phase` between polls. If one of
+them held a value last time and holds none this time — someone deleted a
+`target` line rather than clearing it to a recognised default, say — the next
+poll surfaces a note (`"target removed since last poll"`) instead of quietly
+reverting to the field's default as if it had never been set. It only fires on
+a value disappearing, never on one merely changing.
+
 ### Two fields that are deliberately absent
 
 `updated` used to be a field. It is now derived from the repo's `pushed_at`
@@ -88,68 +102,103 @@ timestamp via the GitHub API. A hand-maintained freshness date is the one field
 guaranteed to be wrong exactly when it matters, because the moment you stop
 touching a project is also the moment you stop updating its header.
 
-`priority` is never stored. It is computed on every poll from `stakes`,
-`target`, `blocker` and `phase` — see below. A stored priority is a judgment
-frozen at the time of writing; a computed one moves on its own as a deadline
-approaches.
+Nothing about a card's position on the board is stored either. Order is
+recomputed on every poll from `target`, commit activity and `stakes` — see
+below. A stored ranking is a judgment frozen at the time of writing; a
+computed one moves on its own as a deadline approaches or a project goes
+quiet.
 
 The rule behind both: facts come from the GitHub API, judgments come from
 `STATE.md`. Anything derivable is derived.
 
-## How priority is computed
+## How the board is ordered
 
-A base weight from `stakes`, multiplied by an urgency factor from `target`:
+Ordering is two-tier.
 
-| `stakes` | Base |
-|---|---|
-| `revenue` | 4.0 |
-| `product` | 2.0 |
-| `personal` | 1.0 |
+**Tier 1 — deadline.** Any card with a `target` at most 30 days away —
+including one already overdue — comes first, soonest (or most overdue) first.
 
-| Days to `target` | Urgency |
-|---|---|
-| no target | 1.0 |
-| over 180 | 1.0 |
-| 91 to 180 | 1.3 |
-| 31 to 90 | 1.7 |
-| 0 to 30 | 2.4 |
-| overdue | 3.0 |
+**Tier 2 — momentum.** Every other card is ordered by momentum, descending:
 
 ```
-score = base × urgency
-if blocker is non-empty:  score × 1.4
-if phase == parked:       score × 0.2
+momentum = (commits in the last 7 days × 3) + commits in the last 30 days
 ```
 
-Rounded to two decimals. The score then lands in a band:
+Momentum comes entirely from the GitHub commits API. Nothing in `STATE.md`
+feeds it, so it needs no maintenance and cannot drift the way a hand-typed
+field can. `commits_7d` and `commits_30d` are exposed on every card so the
+number behind the weighting is never hidden. A card whose activity call
+failed carries `momentum: null` — it sorts alongside cards with genuinely
+zero momentum (never below them), but it is never displayed or reasoned
+about as if it were confirmed quiet. Unknown and zero look the same to the
+sort key; they do not look the same on the card.
 
-| Score | Band |
-|---|---|
-| 4.0 and above | high |
-| 2.0 to 3.99 | normal |
-| below 2.0 | low |
+If momentum ties, `stakes` breaks it — `revenue`, then `product`, then
+`personal` — and if that also ties, the repo name settles it. `stakes` is
+purely a tiebreak now; it no longer sets a base weight.
 
-Worked examples:
+### Debt marks a card. It never moves one.
 
-| Stakes | Target | Blocked | Phase | Score | Band |
-|---|---|---|---|---|---|
-| revenue | +420d | no | building | 4.0 | high |
-| revenue | +20d | no | building | 9.6 | high |
-| revenue | overdue 5d | no | shipped | 12.0 | high |
-| product | none | no | shipped | 2.0 | normal |
-| product | none | no | parked | 0.4 | low |
-| personal | none | no | usable | 1.0 | low |
-| personal | none | yes | shipped | 1.4 | low |
+`debt` is a separate number that plays no part in the sort:
 
-Every card shows its score, and expanding one shows the arithmetic that
-produced it — which factor contributed what, and where the card ranks. The
-numbers on screen come from the same function that does the sorting, so they
-cannot drift apart.
+```
+debt = age / stale_days
+     + 1.5  if blocker is non-empty
+     + 2.0  if the target is overdue
+```
 
-The board sorts by score descending, then by age descending. Blocked work is
-not special-cased to the top — the 1.4× multiplier means it rises on its own
-merits, and a blocked personal side project stays below unblocked revenue work,
-which is usually the honest ordering.
+Debt drives exactly two things: the `debt_reason` shown on a card (`"quiet 94
+days"`, `"blocked"`, `"3d overdue"`), and which single card — if any —
+receives the rescue slot below. It is never read by the sort key. A project
+can carry a debt of 9.0 and still sit exactly where its tier and momentum put
+it; a stale or blocked project used to get quietly promoted by the old score,
+which buried the very cards that most needed a visible flag.
+
+### Roles: hero, rescue, tail
+
+Every card carries a `role`.
+
+- **`hero`** — the top card after sorting. It leads with its current step
+  rendered as the largest text on the board. It only steps aside for `tail`
+  styling when the top card has nothing to say at all: no current step, no
+  deadline inside 30 days, and momentum of exactly `0`. Unknown momentum does
+  not suppress it — "we could not find out" is not the same as "nothing is
+  happening", and only the latter empties the hero slot.
+- **`rescue`** — at most one card. The candidate pool is every card ranked
+  5th or lower, excluding anything `parked`, with `debt >= 1.0`. Whichever
+  candidate carries the most debt gets the slot. A project that already sits
+  in the top four is never rescued, however much debt it carries — it does
+  not need surfacing, it is already visible. If the pool is empty, no card
+  is `rescue` and the panel renders no rescue slot at all.
+- **`tail`** — everything else, in sort order.
+
+### The golden order
+
+This is the order today's eleven-repo portfolio produces. It is exercised by
+the test suite as a regression check, so a future change to the formula
+cannot silently reshuffle the board:
+
+| Rank | Repo | Stakes | Deadline | Momentum | Debt | Role |
+|---|---|---|---|---|---|---|
+| 1 | anthonyvenitis | revenue | 12d | 31 | 0.29 | hero |
+| 2 | argus | personal | — | 204 | 0.00 | tail |
+| 3 | premiere | revenue | — | 151 | 1.79 | tail |
+| 4 | nima | product | — | 139 | 0.29 | tail |
+| 5 | the-bridge | product | — | 88 | 1.57 | rescue |
+| 6 | oikovis-autom | personal | — | 21 | 0.29 | tail |
+| 7 | Gnomon | personal | — | 19 | 0.00 | tail |
+| 8 | pounta | personal | — | 11 | 0.29 | tail |
+| 9 | pulse | product | — | 4 | 0.29 | tail |
+| 10 | ha-doukas-bus | personal | — | 4 | 0.29 | tail |
+| 11 | pilates | personal | — | 4 | 0.29 | tail |
+
+Two things worth noticing in that table. `premiere` carries more debt than
+`the-bridge` (1.79 vs 1.57) and is blocked, yet it is not rescued — it
+already sits at rank 3, above the rank-5 floor, so `the-bridge` gets the slot
+instead. And `pulse`, `ha-doukas-bus` and `pilates` all tie on momentum (4):
+`stakes` breaks `pulse` ahead (`product` outranks `personal`), and since
+`ha-doukas-bus` and `pilates` tie on `stakes` too, the repo name is what
+finally separates them.
 
 ## Configuration
 
@@ -184,7 +233,7 @@ Contents: Read and write — treat it as a separate decision at the time.
 
 ## How a row is coloured
 
-Colour reflects health, which is a separate axis from priority. Age is measured
+Colour reflects health, which is a separate axis from ordering. Age is measured
 from the repo's last push, not from anything you type.
 
 | Condition | State |
@@ -210,7 +259,8 @@ as a separate thing to remember:
 > the true current step (or leave none if nothing is in flight), set `blocker`
 > if something external is holding this up (empty string otherwise), and
 > correct `phase`, `stakes` or `target` if the shape of the project has
-> changed. There is no date to maintain — freshness comes from the last push.
+> changed. There is no date to maintain and nothing to re-score — freshness
+> and ordering both come from your commits, not from anything typed here.
 
 Put that wherever the repo keeps its contributor instructions.
 
@@ -231,5 +281,6 @@ polls GitHub on `poll_minutes`. Refresh forces a real GitHub pull.
 
 ## Rate limits
 
-Non-issue at this scale: 5,000 authenticated requests per hour against two
-requests per repo per `poll_minutes` — one for metadata, one for `STATE.md`.
+Non-issue at this scale: 5,000 authenticated requests per hour against three
+requests per repo per `poll_minutes` — one for metadata, one for commit
+activity, one for `STATE.md`.

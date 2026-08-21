@@ -10,7 +10,8 @@ steps:
   - "[x] Published as a Home Assistant add-on repository"
   - "[x] Get the add-on running in Home Assistant"
   - "[x] Backfill STATE.md headers across remaining repos"
-  - "[>] Panel redesign for the six-field card"
+  - "[x] Panel redesign for the six-field card"
+  - "[>] Momentum board with hero and rescue"
 ---
 
 # Gnomon

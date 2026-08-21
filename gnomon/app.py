@@ -5,7 +5,7 @@ each repo's STATE.md, and serves a single-page panel over HA ingress.
 
 Facts come from the GitHub API. Judgments come from STATE.md. Freshness is
 derived from the repo's last push, never from a hand-maintained date, and
-ordering is computed from momentum, debt and stakes rather than stored.
+ordering is computed from deadline, momentum and stakes rather than stored.
 
 Expected STATE.md header:
 

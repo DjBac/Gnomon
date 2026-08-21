@@ -1,5 +1,28 @@
 # Changelog
 
+## 0.4.0
+
+The board is ordered by what you are actually working on.
+
+- Ordering is now two-tier: a target within 30 days comes first, everything
+  else by momentum
+- Momentum is derived from commit activity — `(commits in 7d x 3) + commits in
+  30d` — so it needs no maintenance and cannot go stale
+- Debt (staleness, blocker, overdue) marks a card and picks the rescue slot,
+  but never affects its position. Stale cards are no longer promoted and dimmed
+  at the same time
+- One hero card leads with its current step as the largest text on screen
+- One optional rescue slot surfaces the most-owed project from below the fold,
+  and renders nothing when nothing qualifies
+- `score`, `score_factors` and `priority` are gone; `momentum`, `debt`,
+  `debt_reason`, `role`, `order_reason`, `order_badge`, `commits_7d` and
+  `commits_30d` replace them
+- A vanished `target`, `stakes` or `phase` is now surfaced as a note
+- Three GitHub calls per repo instead of two. A failed activity call reads as
+  unknown, never as zero
+- The backend is four modules; tests run without the container
+- No STATE.md needs editing
+
 ## 0.3.1
 
 Makes the sort explain itself. The board was ordered by a score it never showed.
