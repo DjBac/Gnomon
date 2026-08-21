@@ -225,37 +225,12 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   white-space: nowrap;
 }
 
-.pill-high {
-  font-family: var(--mono);
-  font-size: .5625rem;
-  font-weight: 600;
-  letter-spacing: .08em;
-  color: var(--accent);
-  border: 1px solid currentColor;
-  border-radius: 980px;
-  padding: .05rem .35rem;
-  flex: none;
-  opacity: .9;
-}
-
 .age {
   flex: none;
   font-family: var(--mono);
   font-size: .6875rem;
   color: var(--dimmer);
   letter-spacing: -.01em;
-}
-
-/* score — why this card sits where it sits */
-.score {
-  margin-left: auto;
-  flex: none;
-  font-family: var(--mono);
-  font-size: .75rem;
-  font-weight: 600;
-  color: var(--accent);
-  letter-spacing: -.02em;
-  opacity: .95;
 }
 
 .why {
@@ -268,8 +243,6 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   color: var(--dimmer);
   letter-spacing: -.01em;
 }
-.why b { color: var(--dim); font-weight: 600; }
-.why em { font-style: normal; color: var(--accent); opacity: .9; }
 
 /* ---------- progress ---------- */
 
@@ -301,8 +274,6 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   line-height: 1.35;
   letter-spacing: -.005em;
 }
-
-.next.empty { color: var(--dimmer); font-style: italic; }
 
 /* ---------- meta ---------- */
 
@@ -600,17 +571,21 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
       board.appendChild(el("div", "empty-state", "No projects tracked yet."));
       return;
     }
-    cards.forEach(function (c) {
-      if (c.role === "hero") board.appendChild(heroCard(c));
-      else if (c.role === "rescue") board.appendChild(rescueCard(c));
-      else board.appendChild(tailRow(c));
-    });
+    // Roles come from the backend. Emit hero first, then rescue, then every
+    // remaining card in its existing order — a rescue picked precisely
+    // because it sits below the fold must not render at its ordinal rank.
+    var hero = cards.filter(function (c) { return c.role === "hero"; });
+    var rescue = cards.filter(function (c) { return c.role === "rescue"; });
+    var tail = cards.filter(function (c) { return c.role !== "hero" && c.role !== "rescue"; });
+    hero.forEach(function (c) { board.appendChild(heroCard(c)); });
+    rescue.forEach(function (c) { board.appendChild(rescueCard(c)); });
+    tail.forEach(function (c) { board.appendChild(tailRow(c)); });
   }
 
   function tally(cards) {
     var active = 0, blocked = 0, stale = 0;
     cards.forEach(function (c) {
-      if (c.commits_7d) active++;
+      if (typeof c.commits_7d === "number" && c.commits_7d > 0) active++;
       if (c.state === "blocked") blocked++;
       if (c.state === "stale") stale++;
     });

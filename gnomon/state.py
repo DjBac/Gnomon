@@ -145,7 +145,25 @@ def vanished(previous: dict, current: dict) -> list[str]:
     return [f for f in WATCHED_FIELDS if previous.get(f) and not current.get(f)]
 
 
+def persist_values(previous: dict, current: dict) -> dict:
+    """The snapshot to remember for next poll.
+
+    For each watched field, an empty current value is replaced with the
+    last non-empty one on record. Without this, a field that vanishes is
+    only ever caught for a single poll: the first comparison flags it, but
+    the empty value then gets stored as the new baseline, so the next
+    comparison is empty-against-empty and reports nothing. Carrying the
+    last known value forward keeps `vanished()` reporting the removal on
+    every poll until the field returns.
+    """
+    merged = dict(current)
+    for field in WATCHED_FIELDS:
+        if not merged.get(field) and previous.get(field):
+            merged[field] = previous[field]
+    return merged
+
+
 def vanished_note(gone: list[str]) -> str:
     if not gone:
         return ""
-    return f"{', '.join(gone)} removed since last poll"
+    return f"{', '.join(gone)} removed from STATE.md"

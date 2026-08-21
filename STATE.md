@@ -21,7 +21,8 @@ from the `gnomon` repository.
 
 ## Decided
 - Schema: 6 fields — `project`, `phase`, `stakes`, `target`, `blocker`, `steps`.
-  `updated` is derived from the repo's last push; `priority` is computed, never stored.
+  `updated` is derived from the repo's last push; ordering is computed from
+  deadline and momentum on every poll, never stored.
 - Source of truth: `STATE.md` front-matter per repo. Pull, not push.
 - Surface: HA add-on, ingress panel, sidebar entry.
 - Distribution: add-on repository, not a local `/addons` folder.

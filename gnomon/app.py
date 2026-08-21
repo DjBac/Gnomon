@@ -145,6 +145,7 @@ async def fetch_repo(
 
     body, state_note = await github.fetch_state_md(session, repo)
     meta: dict = {}
+    meta_ok = False
     if body is None:
         card["note"] = state_note
     else:
@@ -153,6 +154,7 @@ async def fetch_repo(
             card["note"] = parse_note
         else:
             meta = parsed
+            meta_ok = True
 
     card["project"] = str(meta.get("project") or card["project"]).strip()
     card["phase"] = state.normalise_phase(meta.get("phase"))
@@ -185,9 +187,13 @@ async def fetch_repo(
     )
     card["order_reason"], card["order_badge"] = ranking.order_reason(card)
 
+    previous = seen.get(repo, {})
     current = state.watched_values(meta)
-    gone = state.vanished(seen.get(repo, {}), current)
-    seen[repo] = current
+    gone = state.vanished(previous, current)
+    # Only a poll that actually parsed a header gets to update memory — a
+    # STATE.md fetch or parse failure must not wipe what we remembered.
+    if meta_ok:
+        seen[repo] = state.persist_values(previous, current)
 
     for candidate in (activity_note, steps_note, state.vanished_note(gone)):
         if candidate and not card["note"]:

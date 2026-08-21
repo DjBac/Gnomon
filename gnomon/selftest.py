@@ -270,18 +270,18 @@ def selftest_order_reason() -> int:
 
 
 GOLDEN = [
-    # repo,           stakes,     phase,     dtt,  c7, c30, blocker, age
-    ("anthonyvenitis", "revenue",  "usable",   12,   2,  25, "",        4),
-    ("argus",          "personal", "usable", None,  51,  51, "",        0),
-    ("premiere",       "revenue",  "usable", None,  17, 100, "walk",    4),
-    ("nima",           "product",  "building", None, 29, 52, "",        4),
-    ("the-bridge",     "product",  "building", None, 22, 22, "queue",   1),
-    ("oikovis-autom",  "personal", "usable", None,   2,  15, "",        4),
-    ("Gnomon",         "personal", "usable", None,   4,   7, "",        0),
-    ("pounta",         "personal", "usable", None,   1,   8, "",        4),
-    ("pilates",        "personal", "usable", None,   1,   1, "",        4),
-    ("ha-doukas-bus",  "personal", "shipped", None,  1,   1, "",        4),
-    ("pulse",          "product",  "building", None, 1,   1, "",        4),
+    # repo,                              stakes,     phase,     dtt,  c7, c30, blocker, age
+    ("DjBac/anthonyvenitis",              "revenue",  "usable",   12,   2,  25, "",        4),
+    ("DjBac/argus",                       "personal", "usable", None,  51,  51, "",        0),
+    ("DjBac/premiere",                    "revenue",  "usable", None,  17, 100, "walk",    4),
+    ("DjBac/nima",                        "product",  "building", None, 29, 52, "",        4),
+    ("DjBac/the-bridge",                  "product",  "building", None, 22, 22, "queue",   1),
+    ("DjBac/oikovis-automations",         "personal", "usable", None,   2,  15, "",        4),
+    ("DjBac/Gnomon",                      "personal", "usable", None,   4,   7, "",        0),
+    ("DjBac/pounta-sunbed-booking",       "personal", "usable", None,   1,   8, "",        4),
+    ("DjBac/pilates-autobooker",          "personal", "usable", None,   1,   1, "",        4),
+    ("DjBac/ha-doukas-bus",               "personal", "shipped", None,  1,   1, "",        4),
+    ("Oikovis/pulse",                     "product",  "building", None, 1,   1, "",        4),
 ]
 
 
@@ -297,21 +297,22 @@ def selftest_golden_order() -> int:
     ordered = sorted(cards, key=ranking.order_key)
     ranking.assign_roles(ordered)
     got = [c["repo"] for c in ordered]
-    want = ["anthonyvenitis", "argus", "premiere", "nima", "the-bridge",
-            "oikovis-autom", "Gnomon", "pounta", "pulse", "ha-doukas-bus",
-            "pilates"]
+    want = ["DjBac/anthonyvenitis", "DjBac/argus", "DjBac/premiere",
+            "DjBac/nima", "DjBac/the-bridge", "DjBac/oikovis-automations",
+            "DjBac/Gnomon", "DjBac/pounta-sunbed-booking", "Oikovis/pulse",
+            "DjBac/ha-doukas-bus", "DjBac/pilates-autobooker"]
     ok = got == want
     print(f"{'PASS' if ok else 'FAIL'}  golden order")
     if not ok:
         print(f"    got  {got}")
         print(f"    want {want}")
     hero = [c["repo"] for c in ordered if c["role"] == "hero"]
-    hero_ok = hero == ["anthonyvenitis"]
+    hero_ok = hero == ["DjBac/anthonyvenitis"]
     print(f"{'PASS' if hero_ok else 'FAIL'}  golden hero: {hero}")
     # premiere carries a blocker but sits at rank 3, so it is NOT rescued;
     # the-bridge is the highest-debt card at rank 5 or lower.
     rescue = [c["repo"] for c in ordered if c["role"] == "rescue"]
-    rescue_ok = rescue == ["the-bridge"]
+    rescue_ok = rescue == ["DjBac/the-bridge"]
     print(f"{'PASS' if rescue_ok else 'FAIL'}  golden rescue: {rescue}")
     return 0 if (ok and hero_ok and rescue_ok) else 1
 
@@ -456,9 +457,40 @@ def selftest_vanished() -> int:
         print(f"{'PASS' if ok else 'FAIL'}  vanished: {label:28} {got}"
               f"{'' if ok else f'  (want {want})'}")
     note = state.vanished_note(["target"])
-    ok = note == "target removed since last poll"
+    ok = note == "target removed from STATE.md"
     failures += not ok
     print(f"{'PASS' if ok else 'FAIL'}  vanished: note                     {note!r}")
+    return 1 if failures else 0
+
+
+def selftest_persist_values() -> int:
+    """The stored snapshot carries the last non-empty value forward, so a
+    vanished field keeps being reported until it comes back."""
+    cases = [
+        ("field vanishes, carried forward",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"},
+         {"target": "", "stakes": "revenue", "phase": "usable"},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"}),
+        ("field returns, current wins",
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"},
+         {"target": "2028-01-01", "stakes": "revenue", "phase": "usable"},
+         {"target": "2028-01-01", "stakes": "revenue", "phase": "usable"}),
+        ("never had one, stays empty",
+         {"target": "", "stakes": "personal", "phase": ""},
+         {"target": "", "stakes": "personal", "phase": ""},
+         {"target": "", "stakes": "personal", "phase": ""}),
+        ("first sighting, nothing to carry",
+         {},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"},
+         {"target": "2027-09-30", "stakes": "revenue", "phase": "usable"}),
+    ]
+    failures = 0
+    for label, previous, current, want in cases:
+        got = state.persist_values(previous, current)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  persist_values: {label:30} {got}"
+              f"{'' if ok else f'  (want {want})'}")
     return 1 if failures else 0
 
 
@@ -478,6 +510,7 @@ def main() -> int:
     failures += selftest_debt_reason()
     failures += selftest_watched_values()
     failures += selftest_vanished()
+    failures += selftest_persist_values()
     return 1 if failures else 0
 
 

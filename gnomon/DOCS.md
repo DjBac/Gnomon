@@ -91,8 +91,9 @@ the card — it never takes the board down.
 The backend remembers `target`, `stakes` and `phase` between polls. If one of
 them held a value last time and holds none this time — someone deleted a
 `target` line rather than clearing it to a recognised default, say — the next
-poll surfaces a note (`"target removed since last poll"`) instead of quietly
-reverting to the field's default as if it had never been set. It only fires on
+poll surfaces a note (`"target removed from STATE.md"`) instead of quietly
+reverting to the field's default as if it had never been set. The note keeps
+showing on every subsequent poll until the field returns; it only fires on
 a value disappearing, never on one merely changing.
 
 ### Two fields that are deliberately absent
@@ -132,6 +133,11 @@ failed carries `momentum: null` — it sorts alongside cards with genuinely
 zero momentum (never below them), but it is never displayed or reasoned
 about as if it were confirmed quiet. Unknown and zero look the same to the
 sort key; they do not look the same on the card.
+
+Momentum counts commits on the repository's **default branch only** — the
+commits call is made with no `sha`, so work sitting on an unmerged feature
+branch raises it not at all, even though the repo's `pushed_at` still counts
+that push as fresh activity for the freshness colour.
 
 If momentum ties, `stakes` breaks it — `revenue`, then `product`, then
 `personal` — and if that also ties, the repo name settles it. `stakes` is
