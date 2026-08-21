@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import datetime
 import pathlib
 import sys
 
@@ -103,11 +104,42 @@ def selftest_steps() -> int:
     return 1 if failures else 0
 
 
+def selftest_commits() -> int:
+    """Counting commits out of an API payload."""
+    def c(day):
+        return {"commit": {"committer": {"date": f"{day}T10:00:00Z"}}}
+
+    cases = [
+        ("all recent", [c("2026-08-20"), c("2026-08-19")], "2026-08-14", (2, 2)),
+        ("split window", [c("2026-08-20"), c("2026-08-01")], "2026-08-14", (1, 2)),
+        ("none recent", [c("2026-08-01"), c("2026-07-25")], "2026-08-14", (0, 2)),
+        ("empty", [], "2026-08-14", (0, 0)),
+        ("malformed entry", [c("2026-08-20"), {"nope": 1}], "2026-08-14", (1, 2)),
+        ("boundary is inclusive", [c("2026-08-14")], "2026-08-14", (1, 1)),
+    ]
+    failures = 0
+    for label, payload, cut7, want in cases:
+        got = ranking.count_commits(payload, cut7)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  commits: {label:24} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+
+    since, cut7 = ranking.commit_cutoffs(
+        datetime.datetime(2026, 8, 21, 12, 0, tzinfo=datetime.timezone.utc)
+    )
+    ok = since.startswith("2026-07-22") and cut7 == "2026-08-14"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  commits: cutoffs               {since} / {cut7}")
+    return 1 if failures else 0
+
+
 def main() -> int:
     failures = 0
     failures += selftest_no_network_deps()
     failures += selftest_priority()
     failures += selftest_steps()
+    failures += selftest_commits()
     return 1 if failures else 0
 
 

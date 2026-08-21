@@ -2,11 +2,16 @@
 
 from __future__ import annotations
 
+import datetime
+
 FRESH_MAX = 6
 STAKES_BASE = {"revenue": 4.0, "product": 2.0, "personal": 1.0}
 DEFAULT_STAKES = "personal"
 BLOCKED_MULTIPLIER = 1.4
 PARKED_MULTIPLIER = 0.2
+MOMENTUM_RECENT_DAYS = 7
+MOMENTUM_WINDOW_DAYS = 30
+RECENT_WEIGHT = 3
 
 
 def urgency(days_to_target: int | None) -> float:
@@ -106,3 +111,26 @@ def sort_cards(cards: list[dict]) -> list[dict]:
             -(c["age"] if c["age"] is not None else -1),
         ),
     )
+
+
+def commit_cutoffs(now: datetime.datetime) -> tuple[str, str]:
+    """(since timestamp for the API, date string for the 7-day boundary)."""
+    since = (now - datetime.timedelta(days=MOMENTUM_WINDOW_DAYS)).strftime(
+        "%Y-%m-%dT%H:%M:%SZ"
+    )
+    cut7 = (now - datetime.timedelta(days=MOMENTUM_RECENT_DAYS)).date().isoformat()
+    return since, cut7
+
+
+def _commit_day(commit) -> str:
+    try:
+        return commit["commit"]["committer"]["date"][:10]
+    except (KeyError, TypeError, IndexError):
+        return ""
+
+
+def count_commits(payload: list, cut7: str) -> tuple[int, int]:
+    """(commits in the recent window, commits in the whole window)."""
+    total = len(payload)
+    recent = sum(1 for c in payload if _commit_day(c) >= cut7)
+    return recent, total

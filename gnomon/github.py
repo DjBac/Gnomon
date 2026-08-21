@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+from datetime import datetime, timezone
 
 import aiohttp
 
@@ -51,3 +52,31 @@ async def fetch_state_md(session: aiohttp.ClientSession, repo: str) -> tuple[str
             return await response.text(), ""
     except (aiohttp.ClientError, asyncio.TimeoutError) as err:
         return None, f"Fetch failed: {type(err).__name__}"
+
+
+async def fetch_commits(
+    session: aiohttp.ClientSession, repo: str, since: str
+) -> tuple[list | None, str]:
+    """Commits since a timestamp. Returns (payload, note).
+
+    A failure returns (None, note) and NEVER an empty list — an unreachable
+    API must not make an active project look dormant.
+    """
+    url = f"{GITHUB_API}/repos/{repo}/commits"
+    params = {"since": since, "per_page": "100"}
+    try:
+        async with session.get(
+            url, params=params, headers={"Accept": "application/vnd.github+json"}
+        ) as response:
+            if response.status == 409:
+                return [], ""          # empty repository, legitimately quiet
+            if response.status != 200:
+                return None, "Activity unavailable"
+            data = await response.json()
+    except (aiohttp.ClientError, asyncio.TimeoutError):
+        return None, "Activity unavailable"
+    except (json.JSONDecodeError, ValueError):
+        return None, "Activity unavailable"
+    if not isinstance(data, list):
+        return None, "Activity unavailable"
+    return data, ""
