@@ -6,7 +6,7 @@ RUN apk add --no-cache python3 py3-pip \
         aiohttp==3.9.5 \
         PyYAML==6.0.1
 
-COPY app.py /app/app.py
+COPY *.py /app/
 COPY www /app/www
 COPY run.sh /run.sh
 RUN chmod a+x /run.sh
