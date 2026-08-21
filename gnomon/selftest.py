@@ -316,6 +316,83 @@ def selftest_golden_order() -> int:
     return 0 if (ok and hero_ok and rescue_ok) else 1
 
 
+def selftest_debt_never_orders() -> int:
+    """Debt marks a card for rescue; it must never move it, at any tiebreak point.
+
+    All four cards tie on tier, momentum, and stakes, so with debt playing no
+    part the only remaining tiebreak is repo name. If any refactor smuggles
+    debt into order_key anywhere before that last field -- as a dominant
+    term or a subtle tiebreak -- some permutation below will reorder the
+    cards and expose it.
+    """
+    failures = 0
+    repos = ["alpha", "beta", "gamma", "delta"]
+    want = ["alpha", "beta", "delta", "gamma"]  # alphabetical, the only live tiebreak
+
+    debt_assignments = [
+        [0.0, 0.0, 0.0, 0.0],
+        [9.0, 0.0, 0.0, 0.0],
+        [0.0, 9.0, 0.0, 0.0],
+        [0.0, 0.0, 9.0, 0.0],
+        [0.0, 0.0, 0.0, 9.0],
+        [5.0, 1.0, 9.0, 0.0],
+        [0.0, 9.0, 5.0, 1.0],
+    ]
+    for debts in debt_assignments:
+        cards = [
+            _card(repo, stakes="personal", momentum=7, debt=d)
+            for repo, d in zip(repos, debts)
+        ]
+        got = [c["repo"] for c in sorted(cards, key=ranking.order_key)]
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  order: debt never a tiebreak {debts} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+    return 1 if failures else 0
+
+
+def selftest_rescue_selection() -> int:
+    """With several debt-eligible cards below the fold, rescue picks exactly
+    one -- the highest-debt candidate -- never zero, never more than one,
+    and never the wrong one."""
+    failures = 0
+    pool = [_card(f"r{i}", momentum=100 - i) for i in range(4)]  # ranks 1-4, ineligible
+    pool += [
+        _card("low-debt", momentum=10, debt=2.0),
+        _card("high-debt", momentum=9, debt=5.0),
+        _card("mid-debt", momentum=8, debt=3.0),
+    ]
+    ordered = sorted(pool, key=ranking.order_key)
+    ranking.assign_roles(ordered)
+    rescues = [c["repo"] for c in ordered if c["role"] == "rescue"]
+
+    ok_count = len(rescues) == 1
+    failures += not ok_count
+    print(f"{'PASS' if ok_count else 'FAIL'}  rescue: exactly one candidate   {rescues}")
+
+    ok_pick = rescues == ["high-debt"]
+    failures += not ok_pick
+    print(f"{'PASS' if ok_pick else 'FAIL'}  rescue: picks highest debt      {rescues}")
+    return 1 if failures else 0
+
+
+def selftest_debt_reason() -> int:
+    cases = [
+        ("blocked wins over overdue", 0, 14, "vendor key", -3, "blocked"),
+        ("overdue wins over age", 0, 14, "", -3, "3d overdue"),
+        ("age when neither", 20, 14, "", None, "quiet 20 days"),
+        ("empty when age is None", None, 14, "", None, ""),
+    ]
+    failures = 0
+    for label, age, sd, blk, dtt, want in cases:
+        got = ranking.debt_reason(age, sd, blk, dtt)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  debt_reason: {label:26} {got!r}"
+              f"{'' if ok else f'  (want {want!r})'}")
+    return 1 if failures else 0
+
+
 def main() -> int:
     failures = 0
     failures += selftest_no_network_deps()
@@ -327,6 +404,9 @@ def main() -> int:
     failures += selftest_roles()
     failures += selftest_order_reason()
     failures += selftest_golden_order()
+    failures += selftest_debt_never_orders()
+    failures += selftest_rescue_selection()
+    failures += selftest_debt_reason()
     return 1 if failures else 0
 
 
