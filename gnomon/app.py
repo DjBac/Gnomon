@@ -5,7 +5,7 @@ each repo's STATE.md, and serves a single-page panel over HA ingress.
 
 Facts come from the GitHub API. Judgments come from STATE.md. Freshness is
 derived from the repo's last push, never from a hand-maintained date, and
-priority is computed from stakes, target and blocker rather than stored.
+ordering is computed from momentum, debt and stakes rather than stored.
 
 Expected STATE.md header:
 
@@ -83,15 +83,49 @@ def new_card(repo: str) -> dict:
         "updated": None,
         "age": None,
         "state": "unknown",
-        "priority": "low",
-        "score": 0.0,
-        "score_factors": [],
+        "commits_7d": None,
+        "commits_30d": None,
+        "momentum": None,
+        "debt": 0.0,
+        "debt_reason": "",
+        "role": "tail",
+        "order_reason": "",
+        "order_badge": "",
         "note": "",
     }
 
 
-async def fetch_repo(session: aiohttp.ClientSession, repo: str, stale_days: int) -> dict:
-    """Build one card from repo metadata plus STATE.md."""
+SEEN_PATH = Path("/data/gnomon-seen.json")
+
+
+def load_seen() -> dict:
+    """Last-seen watched fields per repo. Absent or corrupt reads as empty."""
+    try:
+        with SEEN_PATH.open(encoding="utf-8") as handle:
+            data = json.load(handle)
+        return data if isinstance(data, dict) else {}
+    except (OSError, json.JSONDecodeError):
+        return {}
+
+
+def save_seen(seen: dict) -> None:
+    try:
+        SEEN_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with SEEN_PATH.open("w", encoding="utf-8") as handle:
+            json.dump(seen, handle)
+    except OSError as err:
+        LOG.warning("Could not persist seen-state: %s", err)
+
+
+async def fetch_repo(
+    session: aiohttp.ClientSession,
+    repo: str,
+    stale_days: int,
+    since: str,
+    cut7: str,
+    seen: dict,
+) -> dict:
+    """Build one card from repo metadata, STATE.md and commit activity."""
     card = new_card(repo)
 
     pushed_at, note = await github.fetch_pushed_at(session, repo)
@@ -102,10 +136,12 @@ async def fetch_repo(session: aiohttp.ClientSession, repo: str, stale_days: int)
         # A metadata failure means we have no facts at all — say so and stop.
         card["note"] = note
         card["state"] = ranking.classify("", "", card["age"], stale_days)
-        card["score"] = ranking.compute_score(card["stakes"], None, "", "")
-        card["score_factors"] = ranking.score_factors(card["stakes"], None, "", "")
-        card["priority"] = ranking.band(card["score"])
         return card
+
+    payload, activity_note = await github.fetch_commits(session, repo, since)
+    if payload is not None:
+        card["commits_7d"], card["commits_30d"] = ranking.count_commits(payload, cut7)
+        card["momentum"] = ranking.momentum(card["commits_7d"], card["commits_30d"])
 
     body, state_note = await github.fetch_state_md(session, repo)
     meta: dict = {}
@@ -132,23 +168,30 @@ async def fetch_repo(session: aiohttp.ClientSession, repo: str, stale_days: int)
     card["next"] = state.current_step(steps) or (
         "" if steps else str(meta.get("next") or "").strip()
     )
-    if steps_note and not card["note"]:
-        card["note"] = steps_note
 
     target = state.to_date(meta.get("target"))
     if target is not None:
         card["target"] = target.isoformat()
         card["days_to_target"] = state.days_until(target)
 
-    card["state"] = ranking.classify(card["blocker"], card["phase"], card["age"], stale_days)
-    card["score"] = ranking.compute_score(
-        card["stakes"], card["days_to_target"], card["blocker"], card["phase"]
+    card["state"] = ranking.classify(
+        card["blocker"], card["phase"], card["age"], stale_days
     )
-    card["score_factors"] = ranking.score_factors(
-        card["stakes"], card["days_to_target"], card["blocker"], card["phase"]
+    card["debt"] = ranking.debt(
+        card["age"], stale_days, card["blocker"], card["days_to_target"]
     )
-    card["priority"] = ranking.band(card["score"])
+    card["debt_reason"] = ranking.debt_reason(
+        card["age"], stale_days, card["blocker"], card["days_to_target"]
+    )
+    card["order_reason"], card["order_badge"] = ranking.order_reason(card)
 
+    current = state.watched_values(meta)
+    gone = state.vanished(seen.get(repo, {}), current)
+    seen[repo] = current
+
+    for candidate in (activity_note, steps_note, state.vanished_note(gone)):
+        if candidate and not card["note"]:
+            card["note"] = candidate
     if not card["note"] and not card["next"]:
         card["note"] = "No next action set"
     return card
@@ -179,20 +222,28 @@ async def refresh(app: web.Application) -> None:
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
+    since, cut7 = ranking.commit_cutoffs(datetime.now(timezone.utc))
+    seen = load_seen()
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
         cards = await asyncio.gather(
-            *(fetch_repo(session, repo, stale_days) for repo in repos)
+            *(
+                fetch_repo(session, repo, stale_days, since, cut7, seen)
+                for repo in repos
+            )
         )
+    save_seen(seen)
 
+    ordered = sorted(list(cards), key=ranking.order_key)
+    ranking.assign_roles(ordered)
     app["cache"] = {
-        "projects": ranking.sort_cards(list(cards)),
+        "projects": ordered,
         "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "stale_days": stale_days,
         "phases": state.PHASES,
         "error": None,
     }
-    LOG.info("Refreshed %d repos", len(cards))
+    LOG.info("Refreshed %d repos", len(ordered))
 
 
 async def poll_loop(app: web.Application) -> None:
