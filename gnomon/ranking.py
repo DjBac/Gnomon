@@ -5,87 +5,10 @@ from __future__ import annotations
 import datetime
 
 FRESH_MAX = 6
-STAKES_BASE = {"revenue": 4.0, "product": 2.0, "personal": 1.0}
 DEFAULT_STAKES = "personal"
-BLOCKED_MULTIPLIER = 1.4
-PARKED_MULTIPLIER = 0.2
 MOMENTUM_RECENT_DAYS = 7
 MOMENTUM_WINDOW_DAYS = 30
 RECENT_WEIGHT = 3
-
-
-def urgency(days_to_target: int | None) -> float:
-    """Multiplier derived from how close the target date is."""
-    if days_to_target is None:
-        return 1.0
-    if days_to_target < 0:
-        return 3.0
-    if days_to_target <= 30:
-        return 2.4
-    if days_to_target <= 90:
-        return 1.7
-    if days_to_target <= 180:
-        return 1.3
-    return 1.0
-
-
-def target_phrase(days_to_target: int | None) -> str:
-    """Short label for how close a target is. Shown as scoring evidence."""
-    if days_to_target is None:
-        return "no target"
-    if days_to_target < 0:
-        overdue = -days_to_target
-        unit = f"{overdue}d" if overdue < 60 else f"{round(overdue / 30)}mo"
-        return f"{unit} overdue"
-    if days_to_target == 0:
-        return "due today"
-    unit = (
-        f"{days_to_target}d"
-        if days_to_target < 60
-        else f"{round(days_to_target / 30)}mo"
-    )
-    return f"{unit} left"
-
-
-def score_factors(
-    stakes: str, days_to_target: int | None, blocker: str, phase: str
-) -> list[dict]:
-    """The multipliers behind a score, labelled, in the order applied.
-
-    This is the single source of the arithmetic — `compute_score` multiplies
-    exactly these, so the reasoning shown on a card can never disagree with
-    the number it sorted by.
-    """
-    factors = [
-        {
-            "label": stakes,
-            "factor": STAKES_BASE.get(stakes, STAKES_BASE[DEFAULT_STAKES]),
-        },
-        {"label": target_phrase(days_to_target), "factor": urgency(days_to_target)},
-    ]
-    if blocker:
-        factors.append({"label": "blocked", "factor": BLOCKED_MULTIPLIER})
-    if phase == "parked":
-        factors.append({"label": "parked", "factor": PARKED_MULTIPLIER})
-    return factors
-
-
-def compute_score(
-    stakes: str, days_to_target: int | None, blocker: str, phase: str
-) -> float:
-    """Priority score. Never stored — always computed from current facts."""
-    score = 1.0
-    for factor in score_factors(stakes, days_to_target, blocker, phase):
-        score *= factor["factor"]
-    return round(score, 2)
-
-
-def band(score: float) -> str:
-    if score >= 4.0:
-        return "high"
-    if score >= 2.0:
-        return "normal"
-    return "low"
 
 
 def classify(blocker: str, phase: str, age: int | None, stale_days: int) -> str:
@@ -102,15 +25,116 @@ def classify(blocker: str, phase: str, age: int | None, stale_days: int) -> str:
     return "stale"
 
 
-def sort_cards(cards: list[dict]) -> list[dict]:
-    """Descending by score, then descending by age."""
-    return sorted(
-        cards,
-        key=lambda c: (
-            -c["score"],
-            -(c["age"] if c["age"] is not None else -1),
-        ),
+URGENT_DAYS = 30
+RESCUE_FLOOR = 1.0
+RESCUE_MIN_RANK = 5
+BLOCKED_DEBT = 1.5
+OVERDUE_DEBT = 2.0
+STAKES_ORDER = {"revenue": 0, "product": 1, "personal": 2}
+
+
+def momentum(c7: int | None, c30: int | None) -> int | None:
+    """Weighted commit activity. None means unknown, which is not zero."""
+    if c7 is None or c30 is None:
+        return None
+    return c7 * RECENT_WEIGHT + c30
+
+
+def debt(
+    age: int | None, stale_days: int, blocker: str, days_to_target: int | None
+) -> float:
+    """How much this project is owed. Marks a card; never moves it."""
+    total = 0.0
+    if age is not None and stale_days:
+        total += age / stale_days
+    if blocker:
+        total += BLOCKED_DEBT
+    if days_to_target is not None and days_to_target < 0:
+        total += OVERDUE_DEBT
+    return round(total, 2)
+
+
+def debt_reason(
+    age: int | None, stale_days: int, blocker: str, days_to_target: int | None
+) -> str:
+    """Four words on why this card is owed attention."""
+    if blocker:
+        return "blocked"
+    if days_to_target is not None and days_to_target < 0:
+        return f"{-days_to_target}d overdue"
+    if age is not None:
+        return f"quiet {age} days"
+    return ""
+
+
+def order_key(card: dict) -> tuple:
+    """Deadline tier first, then momentum descending, then stakes."""
+    dtt = card.get("days_to_target")
+    urgent = dtt is not None and dtt <= URGENT_DAYS
+    mom = card.get("momentum")
+    return (
+        0 if urgent else 1,
+        dtt if urgent else 0,
+        -(mom if mom is not None else 0),
+        STAKES_ORDER.get(card.get("stakes"), 9),
+        card.get("repo", ""),
     )
+
+
+def _hero_is_worth_showing(card: dict) -> bool:
+    """A hero needs something to say. Unknown momentum still counts."""
+    dtt = card.get("days_to_target")
+    if card.get("next"):
+        return True
+    if dtt is not None and dtt <= URGENT_DAYS:
+        return True
+    return card.get("momentum") != 0
+
+
+def assign_roles(ordered: list[dict]) -> None:
+    """Set `role` on each card. Mutates in place; `ordered` must be sorted."""
+    for card in ordered:
+        card["role"] = "tail"
+    if not ordered:
+        return
+    if _hero_is_worth_showing(ordered[0]):
+        ordered[0]["role"] = "hero"
+
+    candidates = [
+        c
+        for c in ordered[RESCUE_MIN_RANK - 1:]
+        if c.get("phase") != "parked" and c.get("debt", 0.0) >= RESCUE_FLOOR
+    ]
+    if candidates:
+        max(candidates, key=lambda c: c["debt"])["role"] = "rescue"
+
+
+def order_reason(card: dict) -> tuple[str, str]:
+    """(sentence for the expanded card, badge for the hero)."""
+    dtt = card.get("days_to_target")
+    if dtt is not None and dtt <= URGENT_DAYS:
+        if dtt < 0:
+            return f"{-dtt} days overdue", f"{-dtt}d OVERDUE"
+        if dtt == 0:
+            return "ships today", "SHIPS today"
+        return f"ships in {dtt} days", f"SHIPS {dtt}d"
+
+    if card.get("momentum") is None:
+        return "activity unknown", "—"
+
+    c7 = card.get("commits_7d") or 0
+    c30 = card.get("commits_30d") or 0
+    if c7:
+        unit = "commit" if c7 == 1 else "commits"
+        return f"{c7} {unit} this week", f"{c7}/wk"
+    if c30:
+        unit = "commit" if c30 == 1 else "commits"
+        return f"{c30} {unit} this month", f"{c30}/mo"
+
+    age = card.get("age")
+    if age is None:
+        return "no activity recorded", "quiet"
+    return f"quiet for {age} days", "quiet"
 
 
 def commit_cutoffs(now: datetime.datetime) -> tuple[str, str]:

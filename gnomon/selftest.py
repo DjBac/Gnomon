@@ -23,46 +23,6 @@ def selftest_no_network_deps() -> int:
     return 1 if bad else 0
 
 
-def selftest_priority() -> int:
-    """Acceptance tests for the computed-priority formula."""
-    cases = [
-        ("revenue", 420, "", "building", 4.0, "high"),
-        ("revenue", 20, "", "building", 9.6, "high"),
-        ("revenue", -5, "", "shipped", 12.0, "high"),
-        ("product", None, "", "shipped", 2.0, "normal"),
-        ("product", None, "", "parked", 0.4, "low"),
-        ("personal", None, "", "usable", 1.0, "low"),
-        ("personal", None, "waiting on vendor", "shipped", 1.4, "low"),
-    ]
-    failures = 0
-    for stakes, dtt, blocker, phase, want_score, want_band in cases:
-        got_score = ranking.compute_score(stakes, dtt, blocker, phase)
-        got_band = ranking.band(got_score)
-        ok = got_score == want_score and got_band == want_band
-        failures += not ok
-        target = "no target" if dtt is None else f"target {dtt:+d}d"
-        blocked = "blocked" if blocker else "not blocked"
-        print(
-            f"{'PASS' if ok else 'FAIL'}  {stakes:8} {target:14} {blocked:11} "
-            f"{phase:8} -> {got_score:5} {got_band:6}"
-            f"{'' if ok else f'  (want {want_score} {want_band})'}"
-        )
-    # the displayed reasoning must multiply back to the sorted number
-    recon = 0
-    for stakes, dtt, blocker, phase, want_score, _ in cases:
-        parts = ranking.score_factors(stakes, dtt, blocker, phase)
-        product = 1.0
-        for p in parts:
-            product *= p["factor"]
-        if round(product, 2) != want_score:
-            recon += 1
-            print(f"FAIL  factors do not reconcile: {parts} -> {product}")
-    print(f"factors reconcile with score: {'yes' if not recon else 'NO'}")
-
-    print(f"\n{len(cases) - failures - recon}/{len(cases)} passed")
-    return 1 if (failures or recon) else 0
-
-
 def selftest_steps() -> int:
     """Acceptance tests for the step parser."""
     seven = [
@@ -134,12 +94,239 @@ def selftest_commits() -> int:
     return 1 if failures else 0
 
 
+def selftest_momentum() -> int:
+    cases = [
+        ("very active", 51, 51, 204),
+        ("steady", 17, 100, 151),
+        ("quiet", 0, 0, 0),
+        ("old work only", 0, 12, 12),
+        ("unknown stays unknown", None, None, None),
+    ]
+    failures = 0
+    for label, c7, c30, want in cases:
+        got = ranking.momentum(c7, c30)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  momentum: {label:22} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+    return 1 if failures else 0
+
+
+def selftest_debt() -> int:
+    cases = [
+        ("fresh and fine", 2, 14, "", None, 0.14),
+        ("one stale period", 14, 14, "", None, 1.0),
+        ("blocked", 0, 14, "vendor key", None, 1.5),
+        ("overdue", 0, 14, "", -3, 2.0),
+        ("everything at once", 28, 14, "vendor key", -3, 5.5),
+        ("no age", None, 14, "", None, 0.0),
+    ]
+    failures = 0
+    for label, age, sd, blk, dtt, want in cases:
+        got = ranking.debt(age, sd, blk, dtt)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  debt: {label:26} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+    return 1 if failures else 0
+
+
+def _card(repo, **kw):
+    base = dict(repo=repo, project=repo, stakes="personal", phase="usable",
+                blocker="", next="do a thing", age=3, days_to_target=None,
+                momentum=0, commits_7d=0, commits_30d=0, debt=0.0, role="tail")
+    base.update(kw)
+    return base
+
+
+def selftest_ordering() -> int:
+    failures = 0
+
+    # a near deadline outranks higher momentum
+    cards = [_card("busy", momentum=200), _card("due", days_to_target=12, momentum=1)]
+    got = [c["repo"] for c in sorted(cards, key=ranking.order_key)]
+    ok = got == ["due", "busy"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  order: deadline beats momentum  {got}")
+
+    # a distant target does not enter the urgent tier
+    cards = [_card("busy", momentum=200), _card("far", days_to_target=400, momentum=1)]
+    got = [c["repo"] for c in sorted(cards, key=ranking.order_key)]
+    ok = got == ["busy", "far"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  order: distant target waits     {got}")
+
+    # two deadlines sort soonest first
+    cards = [_card("later", days_to_target=20), _card("sooner", days_to_target=3)]
+    got = [c["repo"] for c in sorted(cards, key=ranking.order_key)]
+    ok = got == ["sooner", "later"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  order: soonest deadline first   {got}")
+
+    # momentum orders the rest, unknown sorts as quiet
+    cards = [_card("mid", momentum=50), _card("top", momentum=99),
+             _card("unknown", momentum=None), _card("low", momentum=1)]
+    got = [c["repo"] for c in sorted(cards, key=ranking.order_key)]
+    ok = got == ["top", "mid", "low", "unknown"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  order: momentum descending      {got}")
+
+    # stakes breaks a momentum tie
+    cards = [_card("personal-one", momentum=5),
+             _card("revenue-one", momentum=5, stakes="revenue")]
+    got = [c["repo"] for c in sorted(cards, key=ranking.order_key)]
+    ok = got == ["revenue-one", "personal-one"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  order: stakes breaks the tie    {got}")
+    return 1 if failures else 0
+
+
+def selftest_roles() -> int:
+    failures = 0
+
+    def roles(cards):
+        ordered = sorted(cards, key=ranking.order_key)
+        ranking.assign_roles(ordered)
+        return {c["repo"]: c["role"] for c in ordered}
+
+    # hero is the top card
+    got = roles([_card("a", momentum=10), _card("b", momentum=1)])
+    ok = got["a"] == "hero" and got["b"] == "tail"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  roles: top card is hero         {got}")
+
+    # hero suppressed only when all three are true
+    got = roles([_card("empty", momentum=0, next="", days_to_target=None)])
+    ok = got["empty"] == "tail"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  roles: quiet board has no hero  {got}")
+
+    # unknown momentum must not suppress the hero
+    got = roles([_card("unknown", momentum=None, next="", days_to_target=None)])
+    ok = got["unknown"] == "hero"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  roles: unknown keeps the hero   {got}")
+
+    # rescue must come from rank 5 or lower
+    pool = [_card(f"r{i}", momentum=100 - i, debt=0.0) for i in range(4)]
+    pool.append(_card("rotting", momentum=1, debt=3.0))
+    got = roles(pool)
+    ok = got["rotting"] == "rescue"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  roles: rescue from below fold   {got.get('rotting')}")
+
+    # a high-debt card already visible is NOT rescued
+    pool = [_card("visible", momentum=100, debt=9.0)] + \
+           [_card(f"r{i}", momentum=50 - i) for i in range(5)]
+    got = roles(pool)
+    ok = "rescue" not in got.values()
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  roles: visible debt not rescued {sorted(set(got.values()))}")
+
+    # below the floor, no rescue slot at all
+    pool = [_card(f"r{i}", momentum=50 - i, debt=0.5) for i in range(8)]
+    got = roles(pool)
+    ok = "rescue" not in got.values()
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  roles: floor respected          {sorted(set(got.values()))}")
+
+    # parked is never rescued
+    pool = [_card(f"r{i}", momentum=50 - i) for i in range(5)]
+    pool.append(_card("parked", momentum=0, debt=9.0, phase="parked"))
+    got = roles(pool)
+    ok = got["parked"] != "rescue"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  roles: parked never rescued     {got['parked']}")
+    return 1 if failures else 0
+
+
+def selftest_order_reason() -> int:
+    cases = [
+        ("ships soon", _card("a", days_to_target=12),
+         ("ships in 12 days", "SHIPS 12d")),
+        ("ships today", _card("a", days_to_target=0),
+         ("ships today", "SHIPS today")),
+        ("overdue", _card("a", days_to_target=-3),
+         ("3 days overdue", "3d OVERDUE")),
+        ("active", _card("a", commits_7d=51, commits_30d=51, momentum=204),
+         ("51 commits this week", "51/wk")),
+        ("one commit", _card("a", commits_7d=1, commits_30d=1, momentum=4),
+         ("1 commit this week", "1/wk")),
+        ("older work only", _card("a", commits_7d=0, commits_30d=9, momentum=9),
+         ("9 commits this month", "9/mo")),
+        ("quiet", _card("a", commits_7d=0, commits_30d=0, momentum=0, age=94),
+         ("quiet for 94 days", "quiet")),
+        ("unknown", _card("a", momentum=None, commits_7d=None, commits_30d=None),
+         ("activity unknown", "—")),
+    ]
+    failures = 0
+    for label, card, want in cases:
+        got = ranking.order_reason(card)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  reason: {label:20} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+    return 1 if failures else 0
+
+
+GOLDEN = [
+    # repo,           stakes,     phase,     dtt,  c7, c30, blocker, age
+    ("anthonyvenitis", "revenue",  "usable",   12,   2,  25, "",        4),
+    ("argus",          "personal", "usable", None,  51,  51, "",        0),
+    ("premiere",       "revenue",  "usable", None,  17, 100, "walk",    4),
+    ("nima",           "product",  "building", None, 29, 52, "",        4),
+    ("the-bridge",     "product",  "building", None, 22, 22, "queue",   1),
+    ("oikovis-autom",  "personal", "usable", None,   2,  15, "",        4),
+    ("Gnomon",         "personal", "usable", None,   4,   7, "",        0),
+    ("pounta",         "personal", "usable", None,   1,   8, "",        4),
+    ("pilates",        "personal", "usable", None,   1,   1, "",        4),
+    ("ha-doukas-bus",  "personal", "shipped", None,  1,   1, "",        4),
+    ("pulse",          "product",  "building", None, 1,   1, "",        4),
+]
+
+
+def selftest_golden_order() -> int:
+    """The eleven real headers must produce the approved order."""
+    cards = []
+    for repo, stakes, phase, dtt, c7, c30, blocker, age in GOLDEN:
+        card = _card(repo, stakes=stakes, phase=phase, days_to_target=dtt,
+                     commits_7d=c7, commits_30d=c30, blocker=blocker, age=age)
+        card["momentum"] = ranking.momentum(c7, c30)
+        card["debt"] = ranking.debt(age, 14, blocker, dtt)
+        cards.append(card)
+    ordered = sorted(cards, key=ranking.order_key)
+    ranking.assign_roles(ordered)
+    got = [c["repo"] for c in ordered]
+    want = ["anthonyvenitis", "argus", "premiere", "nima", "the-bridge",
+            "oikovis-autom", "Gnomon", "pounta", "pulse", "ha-doukas-bus",
+            "pilates"]
+    ok = got == want
+    print(f"{'PASS' if ok else 'FAIL'}  golden order")
+    if not ok:
+        print(f"    got  {got}")
+        print(f"    want {want}")
+    hero = [c["repo"] for c in ordered if c["role"] == "hero"]
+    hero_ok = hero == ["anthonyvenitis"]
+    print(f"{'PASS' if hero_ok else 'FAIL'}  golden hero: {hero}")
+    # premiere carries a blocker but sits at rank 3, so it is NOT rescued;
+    # the-bridge is the highest-debt card at rank 5 or lower.
+    rescue = [c["repo"] for c in ordered if c["role"] == "rescue"]
+    rescue_ok = rescue == ["the-bridge"]
+    print(f"{'PASS' if rescue_ok else 'FAIL'}  golden rescue: {rescue}")
+    return 0 if (ok and hero_ok and rescue_ok) else 1
+
+
 def main() -> int:
     failures = 0
     failures += selftest_no_network_deps()
-    failures += selftest_priority()
     failures += selftest_steps()
     failures += selftest_commits()
+    failures += selftest_momentum()
+    failures += selftest_debt()
+    failures += selftest_ordering()
+    failures += selftest_roles()
+    failures += selftest_order_reason()
+    failures += selftest_golden_order()
     return 1 if failures else 0
 
 
