@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<meta name="color-scheme" content="dark">
+<meta name="color-scheme" content="dark light">
 <title>Gnomon</title>
 <style>
 :root {
@@ -34,7 +34,7 @@
   --surface-hi: rgba(255, 255, 255, .09);
   --border: rgba(255, 255, 255, .08);
   --blur: blur(20px) saturate(160%);
-  --shadow-card: inset 0 1px 0 rgba(255, 255, 255, .055), 0 1px 2px rgba(0, 0, 0, .3);
+  --shadow-card: none;
 
   --text: #e8eaee;
   --text-2: #9aa3b2;
@@ -151,7 +151,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   text-align: center;
   -webkit-backdrop-filter: blur(20px);
   backdrop-filter: blur(20px);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, .05);
+  box-shadow: var(--shadow-card);
 }
 
 .tile b {
