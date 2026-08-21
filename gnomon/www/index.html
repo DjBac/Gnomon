@@ -302,6 +302,23 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   letter-spacing: -.01em;
 }
 
+.pace { font-size: var(--fs-caption); line-height: 1; flex: none; }
+.pace.up { color: var(--ok); }
+.pace.down { color: var(--crit); }
+
+.actbar {
+  height: 4px;
+  border-radius: var(--r-bar);
+  background: var(--track);
+  overflow: hidden;
+  flex: 1;
+  min-width: 0;
+}
+.actbar i { display: block; height: 100%; border-radius: var(--r-bar); background: var(--accent); }
+
+.card.tail .row1 { gap: .5rem; }
+.card.tail .actbar { margin: 0 .1rem; }
+
 /* ---------- progress ---------- */
 
 .prog { display: flex; align-items: center; gap: .5rem; margin: .55rem 0 .5rem; }
@@ -483,6 +500,43 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     if (c.commits_7d) return c.commits_7d + "/wk";
     if (c.commits_30d) return c.commits_30d + "/mo";
     return "quiet";
+  }
+
+  var PACE_WINDOW = 4.3;      // weeks in the 30-day window
+  var PACE_FLOOR = 10;        // below this many monthly commits, say nothing
+  var PACE_UP = 1.25;
+  var PACE_DOWN = 0.6;
+
+  // Direction of travel without storing history: this week against the
+  // month's weekly average. Silent below the floor, where the ratio is noise.
+  function pace(c) {
+    if (typeof c.commits_7d !== "number") return "";
+    if (typeof c.commits_30d !== "number" || c.commits_30d < PACE_FLOOR) return "";
+    var ratio = c.commits_7d / (c.commits_30d / PACE_WINDOW);
+    if (ratio >= PACE_UP) return "up";
+    if (ratio <= PACE_DOWN) return "down";
+    return "";
+  }
+
+  function paceGlyph(c) {
+    var dir = pace(c);
+    if (!dir) return null;
+    return el("span", "pace " + dir, dir === "up" ? "↑" : "↓");
+  }
+
+  function maxCommits(cards) {
+    return cards.reduce(function (m, c) {
+      return typeof c.commits_7d === "number" && c.commits_7d > m ? c.commits_7d : m;
+    }, 0);
+  }
+
+  function activityBar(c, max) {
+    if (!max || typeof c.commits_7d !== "number" || c.commits_7d <= 0) return null;
+    var bar = el("div", "actbar");
+    var fill = el("i");
+    fill.style.setProperty("width", Math.round(100 * c.commits_7d / max) + "%");
+    bar.appendChild(fill);
+    return bar;
   }
 
   function cardShell(c, className) {
@@ -669,7 +723,9 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
              : el("div", "hero-next empty", "Nothing in flight")
     );
     addIf(card, blockerBlock(c));
-    card.appendChild(metaRow([c.stakes, c.phase, activityLabel(c)]));
+    var meta = metaRow([c.stakes, c.phase, activityLabel(c)]);
+    addIf(meta, paceGlyph(c));
+    card.appendChild(meta);
     addIf(card, c.note ? el("div", "note", c.note) : null);
     addIf(card, detailBlock(c));
     return card;
@@ -689,11 +745,13 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     return card;
   }
 
-  function tailRow(c) {
+  function tailRow(c, max) {
     var card = cardShell(c, "card tail");
     var row = el("div", "row1");
     row.appendChild(el("span", "project", c.project));
     row.appendChild(el("span", "age", activityLabel(c)));
+    addIf(row, paceGlyph(c));
+    addIf(row, activityBar(c, max));
     row.appendChild(
       el("span", "count", c.steps_total ? c.steps_done + "/" + c.steps_total : "—")
     );
@@ -717,9 +775,10 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     var hero = cards.filter(function (c) { return c.role === "hero"; });
     var rescue = cards.filter(function (c) { return c.role === "rescue"; });
     var tail = cards.filter(function (c) { return c.role !== "hero" && c.role !== "rescue"; });
+    var max = maxCommits(cards);
     hero.forEach(function (c) { board.appendChild(heroCard(c)); });
     rescue.forEach(function (c) { board.appendChild(rescueCard(c)); });
-    tail.forEach(function (c) { board.appendChild(tailRow(c)); });
+    tail.forEach(function (c) { board.appendChild(tailRow(c, max)); });
   }
 
   function renderSummary(cards) {
