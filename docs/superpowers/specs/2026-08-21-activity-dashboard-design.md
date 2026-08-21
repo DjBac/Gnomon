@@ -1,13 +1,12 @@
 # Activity dashboard — design
 
-**Status:** approved 2026-08-21 · target release 0.5.0
+**Status:** approved 2026-08-21 · target release 0.5.0 · supersedes revision 1
 
 ## The problem
 
 The panel's top surface is four stat tiles: Active, Blocked, Stale, Tracked. Two
-of them currently read zero, a third duplicates what the activity labels on each
-card already say, and the fourth is a constant. The strip occupies 70px and
-answers nothing you could act on.
+read zero, a third duplicates what each card's activity label already says, and
+the fourth is a constant. The strip costs 70px and answers nothing actionable.
 
 Below it the board answers "what should I do now" well. Nothing answers "where
 did my time actually go, and is it going where it matters".
@@ -15,7 +14,7 @@ did my time actually go, and is it going where it matters".
 ## What measurement decided
 
 Every candidate visual was rendered against the real eleven-repo portfolio before
-being chosen. This killed most of them.
+being chosen.
 
 **Pie charts are out.** The categorical fields are degenerate — the same finding
 that killed the old ordering model:
@@ -27,7 +26,7 @@ that killed the old ordering model:
 | `phase` | 64% one slice |
 | `stakes` | 6 / 3 / 2 — the only one with shape |
 
-**The continuous fields have real spread**, which is what bars are for:
+**Continuous fields have real spread**, which is what bars are for:
 
 ```
 commits/7d   58  29  23  20  18   2   2   1   1   1   1
@@ -44,78 +43,117 @@ directional read without it.
 
 `anthonyvenitis.com` ships in 12 days, is the only `revenue` project with a
 target, and its pace has collapsed to a third of its monthly average — 25 commits
-over 30 days, 2 in the last 7. Nothing on the board says this. The hero card
-shows `SHIPS 12d` and `2/WK` side by side and leaves the reader to notice the
-tension.
-
-Surfacing that class of fact is the point of this feature.
+over 30 days, 2 in the last 7. Nothing on the board says this. Surfacing that
+class of fact is the point of the feature.
 
 ## Goal
 
-Replace the four stat tiles with a dashboard that answers, in one glance: where
-the week's effort went, whether each project is speeding up or slowing down,
-whether effort matched stakes, and how much work remains.
+Replace the four stat tiles with a compact summary, give every project an
+activity bar and a pace arrow, and adopt the Argus design system — in a night
+theme and a day theme that switch automatically.
 
 ### Non-goals
 
-- **No new backend fields, no new API calls, no persistence.** Every number is
-  computed in the browser from data the panel already receives.
+- **No backend change.** No new fields, no new API calls, no persistence. Every
+  number is computed in the browser from data the panel already receives.
 - **No pie charts.** See above.
-- **No filtering.** Hiding projects is the failure mode the board was designed
-  against.
-- **Do not displace the hero.** The hero card must still open above the fold on a
-  375×812 iPhone. This is the binding constraint on everything below.
+- **No filtering, no hiding.** Every tracked project appears on screen.
+- **Do not displace the hero.** It must still open above the fold on a 375×812
+  iPhone.
 
-## The dashboard
+## What revision 1 got wrong
+
+Revision 1 specified a summary that ranked five projects by activity, followed by
+a tail that listed all eleven by board order — two lists of the same projects.
+Everything awkward in it followed from that duplication:
+
+- a top-five cut, to stop the summary being a second full list
+- a "N more · N commits" group row, to account for what the cut hid
+- a rule pinning the hero into the chart, because the cut would otherwise hide
+  the single most valuable pace signal in the portfolio
+- an entire interaction design for tapping a chart bar to scroll to its card
+
+**Merging the two lists deletes all four rules.** The summary keeps only what is
+genuinely aggregate; every project appears exactly once, in the tail, where its
+row now carries the activity bar and pace arrow. Summary height drops from about
+240px to about 100px, and all eleven projects are visible instead of five.
+
+## Layout
 
 ```
-THIS WEEK · 156 commits · 11 tracked
+Gnomon                                    00:46   Refresh
 
-Argus                ████████████████████  58 ↑
-Nima                 ██████████            29 ↑
-The Bridge           ████████              23 ↑
-Gnomon               ███████               20 ↑
-Nostos               ██████                18
-· anthonyvenitis.com ▏                      2 ↓
-5 more · 6 commits                            ›
+┌────────────────────────────────────────────────┐
+│   ◜◝    THIS WEEK                              │
+│  ◟65%◞  156 commits                            │
+│         51 of 79 steps · 65% · 5 idle          │
+│                                                 │
+│  ▎████████ ██████████████                      │
+│  13% revenue  34% product  53% personal        │
+└────────────────────────────────────────────────┘
 
-revenue ▎ product ██████ personal █████████
-  13%       34%              53%
+┌────────────────────────────────────────────────┐
+│ anthonyvenitis.com                  SHIPS 12d  │
+│ ▇▇▇▇▇▇▇▇▇▇▇▇▇▇░░░░░  5/7                       │
+│ Drafting quality for venues nobody has visited │
+│ revenue · usable · 2/wk ↓                      │
+└────────────────────────────────────────────────┘
 
-51 of 79 steps · 5 idle
+  Argus                 58 ↑  ████████████  9/11
+  Nostos                18     ████          3/7
+  Nima                  29 ↑  ██████         4/9
+  The Bridge            23 ↑  █████          4/7
+  Gnomon                20 ↑  ████           6/7
+  Oikovis Automations    2     ▏             4/6
+  Pounta Sun-bed         1     ▏             5/5
+  Oikovis Pulse          1     ▏             2/6
+  Doukas Bus             1     ▏             5/7
+  Pilates Auto-Booker    1     ▏             4/7
 ```
 
-### Header
+### Summary panel
 
-`THIS WEEK · <total> commits · <count> tracked`, where total is the sum of
-`commits_7d` across cards with known activity, and count is every card.
+Replaces the four stat tiles. Three elements:
 
-### Activity rows
+- **Completion ring** — Argus's documented geometry: viewBox `92 92`, `r=40`,
+  `stroke=8`, circumference `251.3`, rotated `-90°`, so
+  `stroke-dashoffset = 251.3 × (1 − done/total)`. Rendered at 76px on mobile.
+  Hidden when no project has any steps, since a ring of nothing is decoration.
+- **Week totals** — `THIS WEEK`, the commit total, then a line reading
+  `<done> of <total> steps · <pct>%`, with `<n> idle`, `<n> blocked` and
+  `<n> stale` appended only when non-zero.
+- **Stakes split** — one segmented bar, revenue / product / personal share of the
+  week's commits, with percentage labels. Hidden when the week's total is zero.
+  This is the only place `stakes` does real work now that ordering demoted it to
+  a tiebreak.
 
-Top five by `commits_7d` descending. Bar width is linear against the highest
-`commits_7d` among cards with known activity, so the busiest repo is full width
-and every other bar reads relative to it. Each row is a full-width tap target.
+### Hero card
 
-**The hero is always shown.** If the hero card is not already in the top five it
-is pinned as an extra row directly below them, marked with a leading `·` so its
-out-of-rank position is explained. Without this rule the most valuable pace
-signal in the portfolio — a deadline project decelerating — lands inside the
-collapsed group and is never seen. If the hero is suppressed (the board has no
-hero) no row is pinned.
+Unchanged from 0.4.0 in structure and dominance — the `[>]` step remains the
+largest text on screen. Only the palette and type scale change. Its meta row
+gains the pace arrow, so a decelerating deadline reads in one glance.
 
-The pinned row is a normal activity row in every other respect — it draws a bar,
-carries a pace arrow, and is tappable. It is **not** counted in the group row's
-totals, since it is displayed rather than collapsed.
+The hero does **not** repeat as a tail row.
 
-### The group row
+### Rescue card
 
-Remaining projects collapse to `<n> more · <sum> commits`, carrying both the
-count and their combined activity. `5 more · 6 commits` states the fact worth
-seeing: nearly half the portfolio produced almost nothing this week. Collapsing
-to `5 more` alone would hide it.
+**Unchanged from 0.4.0.** When a project clears the debt floor it renders between
+the hero and the tail, in its existing form. It is not currently visible — no
+repo is blocked or stale — but it is part of the layout and takes the new
+palette like everything else. A rescued project does **not** also appear in the
+tail.
 
-If only one project remains it renders as a normal row — a group of one is
-noise.
+### Tail rows
+
+Every project except the hero and the rescue, in board order, one row each: name, `commits_7d`, pace arrow,
+activity bar, steps fraction. Bar width is linear against the highest `commits_7d` among **all** cards with
+known activity, including the hero and any rescue. Scaling only to the tail would
+make the bars rescale whenever the hero changed, which would read as movement
+where none happened.
+
+Tapping a row expands it into the full step list and reasoning line, exactly as
+today. **No new interaction is introduced** — the chart-to-card navigation from
+revision 1 is unnecessary once the chart and the list are the same thing.
 
 ### Pace arrows
 
@@ -127,142 +165,112 @@ ratio = commits_7d / (commits_30d / 4.3)
 - `↓` when `ratio <= 0.6`
 - nothing in between
 
-**Suppressed entirely when `commits_30d < 10.`** Below that there is not enough
-history to say anything, and a fabricated arrow is worse than no arrow.
+**Suppressed entirely when `commits_30d < 10`.** Below that there is not enough
+history to say anything, and a fabricated arrow is worse than none.
 
-The floor is load-bearing and does real work. Argus reads x4.3 because 58 of its
-58 monthly commits landed this week — that is genuine acceleration and the arrow
-is honest. Pilates Auto-Booker reads x4.3 off a single commit, which is noise.
-Same ratio, opposite meanings, separated by volume alone.
+The floor does real work. Argus reads x4.3 because 58 of its 58 monthly commits
+landed this week — genuine acceleration, honest arrow. Pilates Auto-Booker reads
+x4.3 off a single commit, which is noise. Same ratio, opposite meanings,
+separated by volume alone.
 
-### Stakes split
+## Themes
 
-A single segmented bar: share of the week's commits by `stakes`, in fixed order
-revenue / product / personal, each with its own colour and a percentage label.
+Two palettes, both taken verbatim from `argus/design/tokens.css`.
 
-This is the only place `stakes` does real work. The ordering model demoted it to
-a final tiebreak because it cannot discriminate eleven projects; aggregated
-across a week it is genuinely informative. Today it reads 13% / 34% / 53% —
-thirteen percent of the week went to revenue work, and one of those two projects
-ships in twelve days.
+**Night — Halo.** Radial-gradient ground `#182030 → #0e1219 → #0a0c10`, glass
+panels at `rgba(255,255,255,.045)` on `rgba(255,255,255,.08)` borders with
+`blur(20px) saturate(160%)`. Status hues `#34c759` / `#febc2e` / `#e5484d` /
+`#4c8dff` / `#6d7684`.
 
-Hidden entirely when the week's total is zero, since shares of zero are
-undefined.
+**Day — Daylight.** Ground `#f4f5f7`, surfaces `#ffffff`, text `#16181d` /
+`#59606c` / `#7a8290`, borders `rgba(0,0,0,.05)`, card shadow
+`0 1px 2px rgba(15,20,30,.05), 0 8px 24px rgba(15,20,30,.06)`. Accent `#1668e3`,
+green `#1f9d55`, and the tinted status pills (`--pill-ok-bg` / `--pill-ok-text`
+and siblings).
 
-### Footer line
+**Switching is automatic via `prefers-color-scheme`**, with night as the bare
+`:root` default and day applied under `@media (prefers-color-scheme: light)`.
+This follows the phone, which is what makes it night/day without anything being
+stored. No toggle, no config option, no `localStorage` — the storage ban is why
+a manual override was rejected. If one is ever wanted it needs an add-on config
+option, and that is a separate decision.
 
-`<done> of <total> steps` always, followed by conditional segments appended only
-when non-zero:
+Every colour is defined as a token on `:root` and overridden only inside the
+media query. No component may reference a literal that works in one theme only.
 
-- `<n> idle` — projects with a current step and `commits_7d <= 2`. This
-  distinguishes quiet-because-finished from quiet-despite-intent: a project at
-  5/5 with nothing in flight is correctly excluded, because it is neglecting
-  nothing. A project whose `commits_7d` is `null` is **also excluded** — unknown
-  activity is not evidence of inactivity, the same rule the ordering model
-  follows.
-- `<n> blocked`
-- `<n> stale`
+### Adopted from the Argus token file
 
-One line rather than three. Three stacked lines cost 50px for information that
-reads better combined, and the height budget does not have 50px to spare.
+| | Value |
+|---|---|
+| Type scale | named px steps, 10 / 11 / 11.5 / 12 / 12.5 / 13 / 14 / 15 / 16 / 19 / 20 / 34 |
+| Numerals | `font-variant-numeric: tabular-nums` on the UI face, replacing the monospace font |
+| Radii | `2px` bar · `6px` chip · `12px` button · `16px` frame · `20px` card · `999px` pill |
+| Motion | `--ease-lift: cubic-bezier(.2,.8,.2,1)`, `--t-lift: 200ms`, `--lift-y: -2px` |
+| Ring | `92` viewBox, `r=40`, `stroke=8`, `c=251.3` |
 
-## Interaction
-
-**Tapping a project row** sets that card's expansion state, applies it, and
-scrolls the card into view. The in-memory `open` map already survives re-renders,
-so the card stays expanded through the 120-second refresh; that machinery is
-reused rather than duplicated.
-
-Scrolling honours `prefers-reduced-motion` — smooth when allowed, instant when
-not. The panel's CSS already disables animation under that query, but
-`scrollIntoView` ignores CSS and must check `matchMedia` itself.
-
-**Tapping the group row** scrolls to the highest-ranked grouped project and
-stops. No expansion, no mode. The chevron means "take me there", not "unfold a
-panel", so there is no hidden state to get stuck in.
-
-**The chart and the board are ordered differently, deliberately.** The board
-ranks by deadline then momentum; the chart ranks by raw activity. Argus is chart
-row 1 and board row 3. That is not an inconsistency to reconcile — the chart
-shows where your hands went, the board shows where they should go, and tapping is
-the bridge between the two answers.
+Gnomon's current shell background `#0B0D10` and card fill
+`rgba(255,255,255,.045)` are already identical to Argus's, so the ground does not
+move.
 
 ## Data
 
-Everything is derived in the browser from fields already on each card:
-`project`, `repo`, `role`, `stakes`, `state`, `next`, `steps_done`,
-`steps_total`, `commits_7d`, `commits_30d`.
+Derived in the browser from fields already on each card: `project`, `repo`,
+`role`, `stakes`, `state`, `next`, `steps_done`, `steps_total`, `commits_7d`,
+`commits_30d`.
 
-No backend change. No new API calls. No new persistence. `app.py`, `ranking.py`,
-`state.py` and `github.py` are untouched by this release.
+`app.py`, `ranking.py`, `state.py` and `github.py` are untouched by this release.
 
 ## Edge cases
 
 | Case | Behaviour |
 |---|---|
-| No repos configured | No dashboard renders |
-| Every project at 0 commits | Header reads `0 commits`, bars render empty, stakes bar hidden |
-| `commits_7d` is `null` (activity call failed) | Row shows `—`, draws no bar, excluded from the total and from the stakes split, sorted after known rows. Never folded into the group row — "we could not ask" and "it did nothing" are different facts |
-| All activity unknown | Header reads `activity unknown`, no bars, no stakes bar |
-| Six or fewer projects | All rows shown, no group row |
-| Hero already in the top five | Not duplicated |
-| Board has no hero | No pinned row |
-| `steps_total` is 0 across all cards | Completion segment omitted from the footer |
-
-## Integration
-
-The static `<div class="tiles">` block is replaced by an empty `<div
-id="summary">`. `tally(cards)` becomes `renderSummary(cards)`, called from the
-same place with the same argument. `tally` and the four `t-*` element ids are
-deleted.
-
-`render()` is untouched — the dashboard lives outside `board` and does not
-interact with card rendering.
-
-New functions inside the existing IIFE, all returning DOM nodes: `renderSummary`,
-`chartRow`, `groupRow`, `stakesBar`, `footerLine`, plus a `pace` helper returning
-`"up"`, `"down"` or `""`.
-
-**DOM construction only.** No `innerHTML`, no HTML string concatenation, no
-escaping helper. Bars set `style.width` as a percentage. This matches the rest of
-the file and is a project-wide constraint.
+| No repos configured | No summary, no rows |
+| Every project at 0 commits | `0 commits`, empty bars, stakes bar hidden |
+| `commits_7d` is `null` (activity call failed) | Row shows `—`, draws no bar, excluded from the week total and the stakes split. Never rendered as zero — "we could not ask" and "it did nothing" are different facts |
+| All activity unknown | `activity unknown`, no bars, no stakes bar |
+| No project has steps | Ring hidden, completion segment omitted |
+| Board has no hero | Summary then tail, no hero card |
 
 ## Tests
 
 DOM-stub-under-Node, the pattern the panel already uses. Harness lives outside
 the repo.
 
-- 11 repos → 5 rows, 1 pinned hero row, 1 group row reading `5 more · 6 commits`
-- 6 repos → 6 rows, no group row
-- Hero inside the top five → not duplicated, no pinned row
-- No hero → no pinned row
-- `commits_7d: null` → `—`, no bar, excluded from header total and stakes split
+- 11 repos with a hero and no rescue → 1 hero card + 10 tail rows; every project appears exactly once
+- 11 repos with a hero and a rescue → 1 hero + 1 rescue + 9 tail rows; still exactly once each
+- Ring `stroke-dashoffset` equals `251.3 × (1 − done/total)` for a known fraction
+- Ring hidden when no project has steps
+- `commits_7d: null` → `—`, no bar, excluded from the week total and stakes split
 - All-zero portfolio → `0 commits`, no crash, stakes bar absent
 - Pace: `commits_30d = 9` → no arrow; `= 10` with ratio 1.3 → `↑`; ratio 0.5 → `↓`;
-  ratio 1.0 → nothing
-- Pace boundaries exact at 1.25 and 0.6
-- Footer omits `idle`, `blocked`, `stale` when zero; includes each when non-zero
-- Idle counts a project with a `[>]` and 2 commits; excludes one at 5/5 with no
-  `[>]`; excludes one with a `[>]` and `commits_7d: null`
+  ratio 1.0 → nothing; boundaries exact at 1.25 and 0.6
+- Summary line omits `idle` / `blocked` / `stale` when zero, includes each when
+  non-zero
+- Idle counts a project with a `[>]` and ≤2 commits; excludes one at 5/5 with no
+  `[>]`; excludes one with `commits_7d: null`
 - Markup in a project name lands only as `textContent`, never a parsed element
-- Tapping a row calls `scrollIntoView` on the card with the matching `data-repo`
-  and sets its open state
-- Tapping the group row targets the highest-ranked grouped project and does not
-  expand it
+- Tapping a row toggles its expansion, as in 0.4.0
+- Every colour token is defined on bare `:root` and only overridden inside the
+  media query — no literal that works in one theme alone
 
 ## Rollout
 
-Version **0.5.0**. The API is unchanged; the panel's top surface is materially
+Version **0.5.0**. The API is unchanged; the panel's surface is materially
 different.
 
-`DOCS.md` gains a short section describing the dashboard, including the pace
-formula and its volume floor, so the arrows are explicable rather than magic.
+`DOCS.md` gains a short section on the dashboard, including the pace formula and
+its volume floor so the arrows are explicable rather than magic, and a note that
+the panel follows the device's light/dark setting.
 
 ## Decisions made
 
 - Bars, not pies — measured, not assumed — approved
-- Dashboard replaces the four stat tiles rather than sitting above them — approved
-- Tapping a row scrolls to that card and expands it — approved
-- Pace arrows, stakes split, completion, idle count all included — approved
-- Hero pinned into the chart when outside the top five — approved
+- Summary replaces the four stat tiles — approved
+- Summary and tail merged into one list, deleting the top-five cut, the group
+  row, the hero-pinning rule and the chart-to-card navigation — approved
+- Pace arrows, stakes split, completion ring, idle count all included — approved
+- Argus token file adopted verbatim rather than approximated — approved
+- Halo as night, Daylight as day, switched by `prefers-color-scheme` — approved
+- Manual theme override rejected: it would require persistence, and the panel is
+  barred from `localStorage` — approved
 - Concentration ratio and trend-over-time excluded — approved
