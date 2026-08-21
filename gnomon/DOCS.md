@@ -141,6 +141,11 @@ Worked examples:
 | personal | none | no | usable | 1.0 | low |
 | personal | none | yes | shipped | 1.4 | low |
 
+Every card shows its score, and expanding one shows the arithmetic that
+produced it — which factor contributed what, and where the card ranks. The
+numbers on screen come from the same function that does the sorting, so they
+cannot drift apart.
+
 The board sorts by score descending, then by age descending. Blocked work is
 not special-cased to the top — the 1.4× multiplier means it rises on its own
 merits, and a blocked personal side project stays below unblocked revenue work,

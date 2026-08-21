@@ -164,7 +164,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   to   { opacity: .55; transform: none; }
 }
 
-.row1 { display: flex; align-items: center; gap: .5rem; }
+.row1 { display: flex; align-items: baseline; gap: .5rem; }
 
 .project {
   font-size: 1rem;
@@ -190,13 +190,37 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 }
 
 .age {
-  margin-left: auto;
   flex: none;
   font-family: var(--mono);
   font-size: .6875rem;
   color: var(--dimmer);
   letter-spacing: -.01em;
 }
+
+/* score — why this card sits where it sits */
+.score {
+  margin-left: auto;
+  flex: none;
+  font-family: var(--mono);
+  font-size: .75rem;
+  font-weight: 600;
+  color: var(--accent);
+  letter-spacing: -.02em;
+  opacity: .95;
+}
+
+.why {
+  margin-top: .6rem;
+  padding-top: .6rem;
+  border-top: 1px solid var(--hair);
+  font-family: var(--mono);
+  font-size: .625rem;
+  line-height: 1.6;
+  color: var(--dimmer);
+  letter-spacing: -.01em;
+}
+.why b { color: var(--dim); font-weight: 600; }
+.why em { font-style: normal; color: var(--accent); opacity: .9; }
 
 /* ---------- progress ---------- */
 
@@ -284,7 +308,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 
 .steps ol {
   list-style: none;
-  margin: .7rem 0 .1rem;
+  margin: .7rem 0 0;
   padding: .7rem 0 0;
   border-top: 1px solid var(--hair);
   display: flex;
@@ -379,6 +403,11 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
       .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
   }
 
+  // 4 -> "4.0", 13.44 -> "13.44"; keeps the arithmetic readable
+  function num(n) {
+    return Number.isInteger(n) ? n.toFixed(1) : String(n);
+  }
+
   function ageLabel(a) {
     if (a === null || a === undefined) return "no date";
     if (a <= 0) return "today";
@@ -411,14 +440,31 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
            '<span class="count">' + card.steps_done + " / " + total + "</span></div>";
   }
 
-  function stepList(card) {
-    if (!card.steps || !card.steps.length) return "";
-    var items = card.steps.map(function (s) {
-      var mark = s.state === "done" ? "✓" : (s.state === "current" ? "●" : "○");
-      return '<li class="' + esc(s.state) + '"><span class="mark">' + mark +
-             "</span><span>" + esc(s.text) + "</span></li>";
-    }).join("");
-    return '<div class="steps"><div class="steps-inner"><ol>' + items + "</ol></div></div>";
+  // The arithmetic that put this card where it is. Factors come from the
+  // backend, so the shown reasoning always multiplies to the sorted score.
+  function why(card, rank, total) {
+    var parts = card.score_factors || [];
+    if (!parts.length) return "";
+    var sum = parts.map(function (p) {
+      return "<b>" + esc(p.label) + "</b> " + num(p.factor);
+    }).join(" × ");
+    return '<div class="why">' + sum + " = <em>" + num(card.score) + "</em> " +
+           esc(card.priority) + " · rank " + rank + " of " + total + "</div>";
+  }
+
+  function details(card, rank, total) {
+    var inner = "";
+    if (card.steps && card.steps.length) {
+      var items = card.steps.map(function (s) {
+        var mark = s.state === "done" ? "✓" : (s.state === "current" ? "●" : "○");
+        return '<li class="' + esc(s.state) + '"><span class="mark">' + mark +
+               "</span><span>" + esc(s.text) + "</span></li>";
+      }).join("");
+      inner += "<ol>" + items + "</ol>";
+    }
+    inner += why(card, rank, total);
+    if (!inner) return "";
+    return '<div class="steps"><div class="steps-inner">' + inner + "</div></div>";
   }
 
   function render(cards) {
@@ -454,8 +500,10 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
              ' data-repo="' + esc(c.repo) + '"' +
              ' style="--accent:' + accent + ";animation-delay:" + (i * 40) + 'ms">' +
                '<div class="row1"><span class="project">' + esc(c.project) + "</span>" +
-                 high + '<span class="age">' + esc(ageLabel(c.age)) + "</span></div>" +
-               segments(c) + next + metaRow + blocker + note + stepList(c) +
+                 high + '<span class="score">' + num(c.score) + "</span>" +
+                 '<span class="age">' + esc(ageLabel(c.age)) + "</span></div>" +
+               segments(c) + next + metaRow + blocker + note +
+               details(c, i + 1, cards.length) +
              "</article>";
     }).join("");
   }

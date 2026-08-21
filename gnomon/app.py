@@ -14,8 +14,11 @@ Expected STATE.md header:
     phase: building
     stakes: revenue
     target: 2027-09-30
-    next: "Wire Stripe webhook to delivery unlock"
     blocker: ""
+    steps:
+      - "[x] Branded delivery pages"
+      - "[>] Wire Stripe webhook to delivery unlock"
+      - "[ ] Timeline review UI"
     ---
 """
 
@@ -199,16 +202,54 @@ def urgency(days_to_target: int | None) -> float:
     return 1.0
 
 
+def target_phrase(days_to_target: int | None) -> str:
+    """Short label for how close a target is. Shown as scoring evidence."""
+    if days_to_target is None:
+        return "no target"
+    if days_to_target < 0:
+        overdue = -days_to_target
+        unit = f"{overdue}d" if overdue < 60 else f"{round(overdue / 30)}mo"
+        return f"{unit} overdue"
+    if days_to_target == 0:
+        return "due today"
+    unit = (
+        f"{days_to_target}d"
+        if days_to_target < 60
+        else f"{round(days_to_target / 30)}mo"
+    )
+    return f"{unit} left"
+
+
+def score_factors(
+    stakes: str, days_to_target: int | None, blocker: str, phase: str
+) -> list[dict]:
+    """The multipliers behind a score, labelled, in the order applied.
+
+    This is the single source of the arithmetic — `compute_score` multiplies
+    exactly these, so the reasoning shown on a card can never disagree with
+    the number it sorted by.
+    """
+    factors = [
+        {
+            "label": stakes,
+            "factor": STAKES_BASE.get(stakes, STAKES_BASE[DEFAULT_STAKES]),
+        },
+        {"label": target_phrase(days_to_target), "factor": urgency(days_to_target)},
+    ]
+    if blocker:
+        factors.append({"label": "blocked", "factor": BLOCKED_MULTIPLIER})
+    if phase == "parked":
+        factors.append({"label": "parked", "factor": PARKED_MULTIPLIER})
+    return factors
+
+
 def compute_score(
     stakes: str, days_to_target: int | None, blocker: str, phase: str
 ) -> float:
     """Priority score. Never stored — always computed from current facts."""
-    score = STAKES_BASE.get(stakes, STAKES_BASE[DEFAULT_STAKES])
-    score *= urgency(days_to_target)
-    if blocker:
-        score *= BLOCKED_MULTIPLIER
-    if phase == "parked":
-        score *= PARKED_MULTIPLIER
+    score = 1.0
+    for factor in score_factors(stakes, days_to_target, blocker, phase):
+        score *= factor["factor"]
     return round(score, 2)
 
 
@@ -252,6 +293,7 @@ def new_card(repo: str) -> dict:
         "state": "unknown",
         "priority": "low",
         "score": 0.0,
+        "score_factors": [],
         "note": "",
     }
 
@@ -312,6 +354,7 @@ async def fetch_repo(session: aiohttp.ClientSession, repo: str, stale_days: int)
         card["note"] = note
         card["state"] = classify("", "", card["age"], stale_days)
         card["score"] = compute_score(card["stakes"], None, "", "")
+        card["score_factors"] = score_factors(card["stakes"], None, "", "")
         card["priority"] = band(card["score"])
         return card
 
@@ -350,6 +393,9 @@ async def fetch_repo(session: aiohttp.ClientSession, repo: str, stale_days: int)
 
     card["state"] = classify(card["blocker"], card["phase"], card["age"], stale_days)
     card["score"] = compute_score(
+        card["stakes"], card["days_to_target"], card["blocker"], card["phase"]
+    )
+    card["score_factors"] = score_factors(
         card["stakes"], card["days_to_target"], card["blocker"], card["phase"]
     )
     card["priority"] = band(card["score"])
@@ -466,8 +512,20 @@ def selftest() -> int:
             f"{phase:8} -> {got_score:5} {got_band:6}"
             f"{'' if ok else f'  (want {want_score} {want_band})'}"
         )
-    print(f"\n{len(cases) - failures}/{len(cases)} passed")
-    return 1 if failures else 0
+    # the displayed reasoning must multiply back to the sorted number
+    recon = 0
+    for stakes, dtt, blocker, phase, want_score, _ in cases:
+        parts = score_factors(stakes, dtt, blocker, phase)
+        product = 1.0
+        for p in parts:
+            product *= p["factor"]
+        if round(product, 2) != want_score:
+            recon += 1
+            print(f"FAIL  factors do not reconcile: {parts} -> {product}")
+    print(f"factors reconcile with score: {'yes' if not recon else 'NO'}")
+
+    print(f"\n{len(cases) - failures - recon}/{len(cases)} passed")
+    return 1 if (failures or recon) else 0
 
 
 def selftest_steps() -> int:

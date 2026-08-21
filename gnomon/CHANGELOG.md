@@ -1,5 +1,20 @@
 # Changelog
 
+## 0.3.1
+
+Makes the sort explain itself. The board was ordered by a score it never showed.
+
+- Every card now displays its score, so the ordering is visible as a number
+  rather than something you have to take on faith
+- Expanding a card shows the arithmetic behind it — `revenue 4.0 x 12d left 2.4
+  = 9.6 high, rank 2 of 11` — including the blocked and parked multipliers
+  when they apply
+- New `score_factors` field per card: the labelled multipliers, in the order
+  applied. `compute_score` now multiplies exactly these, so the reasoning shown
+  can never disagree with the number that sorted it
+- A test asserts the factors reconcile with the score for every acceptance case
+- No change to the sort, the scoring weights, or any resulting order
+
 ## 0.3.0
 
 Reads the `steps` list, and the panel becomes a roadmap rather than a single line.
