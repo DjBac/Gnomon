@@ -32,6 +32,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 import aiohttp
+import yaml
 from aiohttp import web
 
 import github
@@ -43,6 +44,19 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 
 OPTIONS_PATH = Path("/data/options.json")
 WWW_DIR = Path(__file__).parent / "www"
+CONFIG_PATH = Path(__file__).parent / "config.yaml"
+
+
+def read_version() -> str:
+    """The add-on version, from the one file that already declares it."""
+    try:
+        with CONFIG_PATH.open(encoding="utf-8") as handle:
+            return str(yaml.safe_load(handle).get("version") or "")
+    except (OSError, ValueError, AttributeError):
+        return ""
+
+
+VERSION = read_version()
 PORT = 8099
 
 
@@ -103,6 +117,8 @@ def new_card(repo: str) -> dict:
 
 
 SEEN_PATH = Path("/data/gnomon-seen.json")
+THEME_PATH = Path("/data/gnomon-theme.json")
+THEMES = ("auto", "day", "night")
 
 
 def load_seen() -> dict:
@@ -122,6 +138,25 @@ def save_seen(seen: dict) -> None:
             json.dump(seen, handle)
     except OSError as err:
         LOG.warning("Could not persist seen-state: %s", err)
+
+
+def load_theme() -> str:
+    """The stored palette choice. "auto" follows the device, as it always did."""
+    try:
+        with THEME_PATH.open(encoding="utf-8") as handle:
+            value = json.load(handle).get("theme")
+    except (OSError, ValueError, AttributeError):
+        return "auto"
+    return value if value in THEMES else "auto"
+
+
+def save_theme(value: str) -> None:
+    try:
+        THEME_PATH.parent.mkdir(parents=True, exist_ok=True)
+        with THEME_PATH.open("w", encoding="utf-8") as handle:
+            json.dump({"theme": value}, handle)
+    except OSError as err:
+        LOG.warning("Could not persist theme: %s", err)
 
 
 async def fetch_repo(
@@ -287,6 +322,8 @@ async def refresh(app: web.Application) -> None:
         "week_average": average,
         "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "stale_days": stale_days,
+        "version": VERSION,
+        "theme": load_theme(),
         "phases": state.PHASES,
         "error": None,
     }
@@ -301,6 +338,22 @@ async def poll_loop(app: web.Application) -> None:
             LOG.exception("Refresh cycle failed")
         interval = max(1, int(app["options"].get("poll_minutes", 15))) * 60
         await asyncio.sleep(interval)
+
+
+async def handle_theme(request: web.Request) -> web.Response:
+    """Store the palette choice. The only write the panel is allowed."""
+    try:
+        body = await request.json()
+    except (ValueError, json.JSONDecodeError):
+        return web.json_response({"error": "Bad request"}, status=400)
+    value = body.get("theme") if isinstance(body, dict) else None
+    if value not in THEMES:
+        return web.json_response({"error": "Unknown theme"}, status=400)
+    save_theme(value)
+    cache = request.app.get("cache")
+    if cache:
+        cache["theme"] = value
+    return web.json_response({"theme": value})
 
 
 async def handle_index(request: web.Request) -> web.FileResponse:
@@ -338,6 +391,7 @@ def main() -> None:
     app.router.add_get("/", handle_index)
     app.router.add_get("/api/projects", handle_projects)
     app.router.add_post("/api/refresh", handle_refresh)
+    app.router.add_post("/api/theme", handle_theme)
     app.router.add_static("/static", WWW_DIR)
 
     app.on_startup.append(on_startup)

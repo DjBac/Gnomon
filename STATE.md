@@ -19,6 +19,7 @@ steps:
   - "[x] One now panel replaces the summary and the hero"
   - "[x] A deadline leads only when it is at risk"
   - "[x] Four-week activity panel that reads itself"
+  - "[x] Theme switch and version footprint"
 ---
 
 # Gnomon
@@ -35,7 +36,9 @@ from the `gnomon` repository.
 - Source of truth: `STATE.md` front-matter per repo. Pull, not push.
 - Surface: HA add-on, ingress panel, sidebar entry.
 - Distribution: add-on repository, not a local `/addons` folder.
-- Read-only v1; write-back deferred to v2.
+- Read-only v1; write-back deferred to v2. The one exception is the theme
+  choice, stored in `/data` from 0.5.8 — a display preference, not project
+  state, and it keeps `localStorage` barred.
 
 ## Open
 

@@ -51,8 +51,13 @@
 }
 
 /* ---------- DAY · Daylight ---------- */
+/* ---------- DAY · Daylight ----------
+   The media query is what "auto" means, so it stops applying the moment an
+   explicit choice sets data-theme. Night needs no forced block: bare :root is
+   already night. The day palette is therefore declared twice, and a check in
+   the panel harness asserts the two copies stay identical. */
 @media (prefers-color-scheme: light) {
-  :root {
+  :root:not([data-theme]) {
     --ground: #f4f5f7;
     --bg: #f4f5f7;
     --surface: #ffffff;
@@ -75,6 +80,30 @@
 
     --dim-state: .82;
   }
+}
+
+:root[data-theme="day"] {
+    --ground: #f4f5f7;
+    --bg: #f4f5f7;
+    --surface: #ffffff;
+    --surface-hi: #fbfbfd;
+    --border: rgba(0, 0, 0, .05);
+    --blur: none;
+    --shadow-card: 0 1px 2px rgba(15, 20, 30, .05), 0 8px 24px rgba(15, 20, 30, .06);
+
+    --text: #16181d;
+    --text-2: #59606c;
+    --text-3: #7a8290;
+    --track: #e6e9ee;
+
+    --ok: #1f9d55;
+    --warn: #8a6116;
+    --crit: #b42328;
+    --run: #1668e3;
+    --stale-c: #7a8290;
+    --unknown-c: rgba(122, 130, 144, .45);
+
+    --dim-state: .82;
 }
 
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -202,6 +231,50 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   font-style: italic;
 }
 .card.hero .prog { margin: .5rem 0 .7rem; }
+
+/* ---------- theme switch ---------- */
+
+.themer {
+  display: flex;
+  gap: 2px;
+  flex: none;
+  padding: 2px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+}
+.themer button {
+  font: inherit;
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+  background: none;
+  border: 0;
+  border-radius: var(--r-pill);
+  padding: .22rem .55rem;
+  cursor: pointer;
+  transition: color .18s ease, background .18s ease;
+}
+.themer button:hover { color: var(--text-2); }
+.themer button[aria-pressed="true"] {
+  color: var(--text);
+  background: var(--surface-hi);
+}
+.themer button[disabled] { opacity: .5; cursor: default; }
+
+/* ---------- footprint ---------- */
+
+.footprint {
+  margin-top: 1.25rem;
+  text-align: center;
+  font-size: var(--fs-micro);
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+  opacity: .7;
+}
 
 /* ---------- stats panel ---------- */
 
@@ -621,6 +694,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 <div class="wrap">
   <div class="top">
     <h1>Gnomon</h1>
+    <div id="themer" class="themer"></div>
     <span class="synced" id="synced"></span>
     <button class="refresh" id="refresh" type="button">Refresh</button>
   </div>
@@ -628,6 +702,8 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   <div id="summary"></div>
 
   <div id="board"><div class="empty-state">Loading…</div></div>
+
+  <div id="footprint" class="footprint"></div>
 </div>
 
 <script>
@@ -784,12 +860,6 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     if (child) parent.appendChild(child);
   }
 
-  function weekTotal(cards) {
-    return cards.reduce(function (n, c) {
-      return n + (typeof c.commits_7d === "number" ? c.commits_7d : 0);
-    }, 0);
-  }
-
   var SVG_NS = "http://www.w3.org/2000/svg";
   var RING_C = 251.3;
   var STAKES_ORDER = ["revenue", "product", "personal"];
@@ -885,9 +955,16 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 
   function statsPanel(data, cards) {
     var weeks = data.weeks;
-    if (!weeks || !weeks.length) return null;
+    if (!cards.length) return null;
     var panel = el("div", "card stats");
     panel.appendChild(el("div", "eyebrow", "Activity"));
+    if (!weeks || !weeks.length) {
+      // No repo reported at all. Unknown is not zero, and a board that draws
+      // nothing here reads as a quiet month rather than a failed call.
+      panel.appendChild(el("div", "readout", "Activity unknown"));
+      panel.appendChild(el("div", "avg", "No repository reported commit activity"));
+      return panel;
+    }
     if (data.activity) {
       // Words first, arithmetic second. The chart carries every count, so the
       // sentence must not repeat one.
@@ -980,21 +1057,13 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   }
 
   function weekStrip(cards) {
-    var strip = el("div", "strip");
-    var known = cards.some(function (c) { return typeof c.commits_7d === "number"; });
-    var item = el("div", "item");
-    item.appendChild(el("span", "n", known ? String(weekTotal(cards)) : "\u2014"));
-    item.appendChild(el("span", "l", known ? "commits this week" : "activity unknown"));
-    strip.appendChild(item);
-    strip.appendChild(el("div", "spacer"));
+    // The week's total belongs to the stats panel directly above; repeating it
+    // here would say the same number twice on one screen. What is left is the
+    // triage, which nothing else reports.
     var chips = triageChips(cards);
-    if (chips) {
-      // The chips live inside the strip so the panel keeps one bottom rule.
-      Array.prototype.slice.call(chips.children).forEach(function (ch) {
-        strip.appendChild(ch);
-      });
-    }
-    return strip;
+    if (!chips) return null;
+    chips.className = "strip";
+    return chips;
   }
 
   function nowPanel(c, cards) {
@@ -1026,7 +1095,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     }
     addIf(card, c.note ? el("div", "note", c.note) : null);
     addIf(card, detailBlock(c));
-    card.appendChild(weekStrip(cards));
+    addIf(card, weekStrip(cards));
     return card;
   }
 
@@ -1077,15 +1146,20 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     var rescue = cards.filter(function (c) { return c.role === "rescue"; });
     var tail = cards.filter(function (c) { return c.role !== "hero" && c.role !== "rescue"; });
     var max = maxCommits(cards);
+    // The month's shape sets the context; the instruction answers it.
+    addIf(board, statsPanel(data || {}, cards));
     if (hero.length) {
       hero.forEach(function (c) { board.appendChild(nowPanel(c, cards)); });
     } else {
       // No card earned the top slot, so the week still needs somewhere to go.
       var bare = el("div", "card now bare");
-      bare.appendChild(weekStrip(cards));
-      board.appendChild(bare);
+      var strip = weekStrip(cards);
+      // With no hero and nothing to triage there is nothing to say at all.
+      if (strip) {
+        bare.appendChild(strip);
+        board.appendChild(bare);
+      }
     }
-    addIf(board, statsPanel(data || {}, cards));
     rescue.forEach(function (c) { board.appendChild(rescueCard(c)); });
     tail.forEach(function (c) { board.appendChild(tailRow(c, max)); });
   }
@@ -1094,6 +1168,57 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     // The summary panel was merged into the now panel at the top of the
     // board. The host stays so the markup and the load path are unchanged.
     document.getElementById("summary").textContent = "";
+  }
+
+  var THEMES = ["auto", "day", "night"];
+  var themeHost = document.getElementById("themer");
+  var currentTheme = "auto";
+
+  function applyTheme(value) {
+    var root = document.documentElement;
+    // "auto" means no attribute at all, which is what re-enables the
+    // prefers-color-scheme media query.
+    if (value === "day" || value === "night") {
+      root.setAttribute("data-theme", value);
+    } else {
+      root.removeAttribute("data-theme");
+    }
+  }
+
+  function paintThemer() {
+    themeHost.textContent = "";
+    THEMES.forEach(function (value) {
+      var button = el("button", null, value);
+      button.setAttribute("type", "button");
+      button.setAttribute("aria-pressed", value === currentTheme ? "true" : "false");
+      button.addEventListener("click", function () { chooseTheme(value); });
+      themeHost.appendChild(button);
+    });
+  }
+
+  function chooseTheme(value) {
+    if (value === currentTheme) return;
+    currentTheme = value;
+    // Paint first: the switch must feel instant even if the write is slow or
+    // fails. The stored value is only what survives a reload.
+    applyTheme(value);
+    paintThemer();
+    fetch("api/theme", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ theme: value })
+    }).catch(function () { /* the panel still looks right; it just won't persist */ });
+  }
+
+  function setTheme(value) {
+    currentTheme = THEMES.indexOf(value) === -1 ? "auto" : value;
+    applyTheme(currentTheme);
+    paintThemer();
+  }
+
+  function footprint(version) {
+    var host = document.getElementById("footprint");
+    host.textContent = version ? "Gnomon " + version : "";
   }
 
   function stamp(iso) {
@@ -1118,6 +1243,8 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
         renderSummary(cards);
         render(cards, data);
         stamp(data.fetched);
+        footprint(data.version);
+        setTheme(data.theme);
         if (data.error) {
           var banner = document.createElement("div");
           banner.className = "error";

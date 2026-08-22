@@ -1,7 +1,7 @@
 # HANDOFF — read me first
 
 Written 2026-08-22, end of the session that shipped 0.4.0 and 0.5.0.
-Current release: **0.5.7**, on `main` and pushed.
+Current release: **0.5.8**, on `main` and pushed.
 
 ## What Gnomon is
 
@@ -23,9 +23,9 @@ stored by hand.
 | `gnomon/state.py` | 169 | Parse `STATE.md` — front-matter, steps, dates, normalisation, vanished-field diffing | `yaml`, stdlib |
 | `gnomon/ranking.py` | 473 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
 | `gnomon/github.py` | 87 | The four API calls and their error notes | `aiohttp` |
-| `gnomon/app.py` | 351 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
+| `gnomon/app.py` | 405 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
 | `gnomon/selftest.py` | 1123 | The entire test suite | `state` + `ranking` only |
-| `gnomon/www/index.html` | 1161 | The whole panel — tokens, layout, render | none |
+| `gnomon/www/index.html` | 1288 | The whole panel — tokens, layout, render | none |
 
 **`state.py` and `ranking.py` must never import `aiohttp`.** That is what lets
 `python3 gnomon/selftest.py` run outside the container. A test in `selftest.py`
@@ -153,8 +153,17 @@ changed what you do next. It was a scoreboard in the most valuable position on
 the screen. The `#summary` host div stays, display-none, so the load path is
 unchanged.
 
-**Then the stats panel**, added in 0.5.7 and sitting between the now panel and
-the rescue slot. It leads with the reading and shows the arithmetic under it:
+**The stats panel leads the board** as of 0.5.8 — Anthony's call: the month's
+shape sets the context, then the instruction answers it. Order is
+`stats → now → rescue → tail`, and the DOM harness asserts it.
+
+The now panel's foot no longer repeats the week's commit total, which the stats
+panel above now owns; what remains there is the triage, which nothing else
+reports. When *no* repo reports activity at all, the stats panel says
+**"Activity unknown"** rather than rendering nothing — a board that draws
+nothing there reads as a quiet month rather than a failed call.
+
+The stats panel itself, added in 0.5.7 and now first. It leads with the reading and shows the arithmetic under it:
 
 ```
 ACTIVITY
@@ -188,9 +197,24 @@ same commits payload, no extra call.
 days**, because under that floor a single commit reads as a 4.3x surge.
 
 **Two palettes**, both taken from `~/Code/argus/design/tokens.css`: Halo at
-night on bare `:root`, Daylight by day inside
-`@media (prefers-color-scheme: light)`. Switched by the device, with no toggle,
-no config option and nothing stored — the panel is barred from `localStorage`.
+night on bare `:root`, Daylight by day.
+
+**A three-way switch sits in the header — auto / day / night**, added in 0.5.8.
+This reverses the original decision that there would be no toggle and nothing
+stored; Anthony asked for it, and chose the storage. **`localStorage` is still
+barred.** The choice is written to `/data/gnomon-theme.json` by
+`POST api/theme`, which is the only write the panel is allowed to make, and is
+returned with every `api/projects` payload.
+
+`auto` means *no* `data-theme` attribute, because the attribute is what
+switches the media query off. So the day palette is declared **twice** — once
+under `@media (prefers-color-scheme: light) { :root:not([data-theme]) }` and
+once under `:root[data-theme="day"]` — and a check in the DOM harness asserts
+the two copies stay token-for-token identical. Night needs no forced block:
+bare `:root` already is night.
+
+Because the stored choice arrives with the first fetch, a forced palette
+repaints a beat after load. The device palette shows first.
 
 **`prefers-color-scheme` follows iOS, not Home Assistant's theme setting.** If
 HA is pinned dark while the phone is in Light, the light panel renders inside a
@@ -206,11 +230,17 @@ dark HA shell.
   light media query. Verify with no carve-outs — a check that excludes its own
   failure is not a check.
 - No `localStorage` / `sessionStorage`, no external fonts, CDNs, scripts or
-  images. The SVG namespace is the only permitted URL.
+  images. The SVG namespace is the only permitted URL. The theme switch does
+  not weaken this — its choice lives in `/data`, not in the browser.
 - **Relative fetch paths only** — `fetch("api/projects")`. A leading slash
   breaks HA ingress.
 - `var()` does not resolve inside SVG presentation attributes. `stroke="var(…)"`
   renders an invisible ring with no error. Ring strokes are set by CSS class.
+
+The footer carries the running version, read from `config.yaml` — which the
+Dockerfile now copies into the image so there is still only one place that
+declares it. If the footer disagrees with the release you pushed, the container
+did not update.
 
 ## Deploying
 

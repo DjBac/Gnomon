@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.8
+
+A theme switch, a version in the footer, and the month's shape on top.
+
+- The header gains a three-way switch: auto, day, night. Auto follows the phone
+  as it always did; the other two override it
+- The choice is stored by the add-on in /data, not in the browser, so the panel
+  stays barred from localStorage and the setting survives a reinstall
+- The activity panel now leads the board, above the now panel: the shape of the
+  month sets the context, then the instruction answers it
+- The now panel no longer repeats the week's commit total, which the panel
+  above it now carries. Its triage counts stay, since nothing else reports them
+- When no repository reports activity at all, the board says "activity unknown"
+  instead of drawing nothing, which would read as a quiet month
+- The footer carries the running version, read from the add-on config so there
+  is still only one place that declares it
+
 ## 0.5.7
 
 The board says how the month is going, in words before numbers.
