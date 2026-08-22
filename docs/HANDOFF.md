@@ -169,7 +169,10 @@ was built to surface.
 See `STATE.md`'s `## Open` section for the live list, and `docs/known-issues.md`
 for parked technical findings from both releases.
 
-The single most useful next change is the **momentum display defect**: the board
-sorts on momentum but each row shows `commits_7d`, so Nostos at 18/wk sits above
-Gnomon at 30/wk with nothing on screen explaining why. It is the same class of
-problem 0.3.1 was written to fix — a board sorting by a number it does not show.
+The next change is **0.5.1, backend only**: `ranking.order_reason` explains a
+card's position for the deadline tier but not the momentum tier, where it just
+restates the count already on the row. `STATE.md`'s `## Open` section carries the
+full diagnosis, the intended output, and why 0.3.1 is the precedent.
+
+It touches `gnomon/ranking.py` and `gnomon/selftest.py` only — no panel change,
+so the real suite covers it and no DOM harness is needed.
