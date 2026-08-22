@@ -66,3 +66,6 @@ data/
 *.tar.gz
 tmp/
 scratch/
+
+# Brainstorming companion scratch
+.superpowers/
