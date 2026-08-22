@@ -207,32 +207,37 @@ def selftest_roles() -> int:
     failures += not ok
     print(f"{'PASS' if ok else 'FAIL'}  roles: unknown keeps the hero   {got}")
 
-    # rescue must come from rank 5 or lower
-    pool = [_card(f"r{i}", momentum=100 - i, debt=0.0) for i in range(4)]
-    pool.append(_card("rotting", momentum=1, debt=3.0))
+    # a stalled card is rescued wherever it ranks
+    pool = [_card(f"r{i}", momentum=100 - i, commits_7d=20, commits_30d=40)
+            for i in range(4)]
+    pool.append(_card("rotting", momentum=1, commits_7d=0, commits_30d=9, age=12))
     got = roles(pool)
     ok = got["rotting"] == "rescue"
     failures += not ok
-    print(f"{'PASS' if ok else 'FAIL'}  roles: rescue from below fold   {got.get('rotting')}")
+    print(f"{'PASS' if ok else 'FAIL'}  roles: stalled card rescued     {got.get('rotting')}")
 
-    # a high-debt card already visible is NOT rescued
-    pool = [_card("visible", momentum=100, debt=9.0)] + \
-           [_card(f"r{i}", momentum=50 - i) for i in range(5)]
+    # debt alone earns nothing — this pool has no abandonment anywhere
+    pool = [_card("visible", momentum=100, debt=9.0, commits_7d=30, commits_30d=60)] + \
+           [_card(f"r{i}", momentum=50 - i, debt=9.0, commits_7d=10, commits_30d=20)
+            for i in range(5)]
     got = roles(pool)
     ok = "rescue" not in got.values()
     failures += not ok
-    print(f"{'PASS' if ok else 'FAIL'}  roles: visible debt not rescued {sorted(set(got.values()))}")
+    print(f"{'PASS' if ok else 'FAIL'}  roles: debt alone not rescued   {sorted(set(got.values()))}")
 
-    # below the floor, no rescue slot at all
-    pool = [_card(f"r{i}", momentum=50 - i, debt=0.5) for i in range(8)]
+    # below the stall floor, no rescue slot at all
+    pool = [_card(f"r{i}", momentum=50 - i, commits_7d=0, commits_30d=2, age=9)
+            for i in range(8)]
     got = roles(pool)
     ok = "rescue" not in got.values()
     failures += not ok
-    print(f"{'PASS' if ok else 'FAIL'}  roles: floor respected          {sorted(set(got.values()))}")
+    print(f"{'PASS' if ok else 'FAIL'}  roles: stall floor respected    {sorted(set(got.values()))}")
 
-    # parked is never rescued
-    pool = [_card(f"r{i}", momentum=50 - i) for i in range(5)]
-    pool.append(_card("parked", momentum=0, debt=9.0, phase="parked"))
+    # parked is never rescued, even when genuinely stalled
+    pool = [_card(f"r{i}", momentum=50 - i, commits_7d=10, commits_30d=20)
+            for i in range(5)]
+    pool.append(_card("parked", momentum=0, commits_7d=0, commits_30d=40,
+                      age=12, phase="parked"))
     got = roles(pool)
     ok = got["parked"] != "rescue"
     failures += not ok
@@ -516,10 +521,11 @@ def selftest_golden_order() -> int:
     hero = [c["repo"] for c in ordered if c["role"] == "hero"]
     hero_ok = hero == ["DjBac/anthonyvenitis"]
     print(f"{'PASS' if hero_ok else 'FAIL'}  golden hero: {hero}")
-    # premiere carries a blocker but sits at rank 3, so it is NOT rescued;
-    # the-bridge is the highest-debt card at rank 5 or lower.
+    # Every repo in this fixture committed in the last 7 days, so nothing has
+    # been walked away from and the rescue slot is correctly empty. Silence
+    # when nothing is wrong is the behaviour, not a gap in the fixture.
     rescue = [c["repo"] for c in ordered if c["role"] == "rescue"]
-    rescue_ok = rescue == ["DjBac/the-bridge"]
+    rescue_ok = rescue == []
     print(f"{'PASS' if rescue_ok else 'FAIL'}  golden rescue: {rescue}")
     return 0 if (ok and hero_ok and rescue_ok) else 1
 
@@ -559,28 +565,146 @@ def selftest_debt_never_orders() -> int:
     return 1 if failures else 0
 
 
-def selftest_rescue_selection() -> int:
-    """With several debt-eligible cards below the fold, rescue picks exactly
-    one -- the highest-debt candidate -- never zero, never more than one,
-    and never the wrong one."""
+def selftest_stall() -> int:
+    """Absence of work is not debt; work that stopped is."""
     failures = 0
-    pool = [_card(f"r{i}", momentum=100 - i) for i in range(4)]  # ranks 1-4, ineligible
-    pool += [
-        _card("low-debt", momentum=10, debt=2.0),
-        _card("high-debt", momentum=9, debt=5.0),
-        _card("mid-debt", momentum=8, debt=3.0),
+    cases = [
+        ("stalled", dict(commits_7d=0, commits_30d=18), 18),
+        ("still moving", dict(commits_7d=5, commits_30d=20), 0),
+        # The case that made this exist: a seasonal project, correctly asleep.
+        ("dormant all month", dict(commits_7d=0, commits_30d=0), 0),
+        ("below the floor", dict(commits_7d=0, commits_30d=2), 0),
+        ("exactly the floor", dict(commits_7d=0, commits_30d=3), 3),
+        # Unknown is not zero, and it is not a stall either.
+        ("unknown", dict(commits_7d=None, commits_30d=None), None),
     ]
-    ordered = sorted(pool, key=ranking.order_key)
-    ranking.assign_roles(ordered)
-    rescues = [c["repo"] for c in ordered if c["role"] == "rescue"]
+    for label, kw, want in cases:
+        got = ranking.stall(_card("a", **kw))
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  stall: {label:22} {got}"
+              f"{'' if ok else f'  (want {want})'}")
 
-    ok_count = len(rescues) == 1
-    failures += not ok_count
-    print(f"{'PASS' if ok_count else 'FAIL'}  rescue: exactly one candidate   {rescues}")
+    got = ranking.stall_reason(_card("a", commits_7d=0, commits_30d=18, age=11))
+    ok = got == "18 commits, then nothing for 11 days"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  stall: names the abandonment  {got!r}")
 
-    ok_pick = rescues == ["high-debt"]
-    failures += not ok_pick
-    print(f"{'PASS' if ok_pick else 'FAIL'}  rescue: picks highest debt      {rescues}")
+    ok = ranking.stall_reason(_card("a", commits_7d=4, commits_30d=18, age=1)) == ""
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  stall: moving has no reason   "
+          f"{ranking.stall_reason(_card('a', commits_7d=4, commits_30d=18, age=1))!r}")
+    return 1 if failures else 0
+
+
+def selftest_rescue_selection() -> int:
+    """Rescue surfaces the biggest abandonment, and nothing else."""
+    failures = 0
+
+    def roles(pool):
+        ordered = sorted(pool, key=ranking.order_key)
+        ranking.assign_roles(ordered)
+        return {c["repo"]: c["role"] for c in ordered}
+
+    pool = [_card(f"r{i}", momentum=100 - i, commits_7d=20, commits_30d=40)
+            for i in range(4)]
+    pool += [
+        _card("small-stall", momentum=10, commits_7d=0, commits_30d=5, age=9),
+        _card("big-stall", momentum=9, commits_7d=0, commits_30d=40, age=20),
+        _card("mid-stall", momentum=8, commits_7d=0, commits_30d=12, age=9),
+    ]
+    got = roles(pool)
+    rescues = [r for r, role in got.items() if role == "rescue"]
+    ok = rescues == ["big-stall"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  rescue: biggest abandonment     {rescues}")
+
+    # A card ranked high is still rescuable — the old rank-5 rule is gone.
+    pool = [_card("leader", momentum=100, commits_7d=30, commits_30d=60),
+            _card("stalled-2nd", momentum=50, commits_7d=0, commits_30d=50, age=8)]
+    got = roles(pool)
+    ok = got["stalled-2nd"] == "rescue"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  rescue: rank does not disqualify {got}")
+
+    # Ties go to the warmer stall.
+    pool = [_card("lead", momentum=100, commits_7d=30, commits_30d=60),
+            _card("cold", momentum=10, commits_7d=0, commits_30d=20, age=26),
+            _card("warm", momentum=9, commits_7d=0, commits_30d=20, age=9)]
+    got = roles(pool)
+    ok = got["warm"] == "rescue"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  rescue: warmer stall wins ties  "
+          f"{[r for r, x in got.items() if x == 'rescue']}")
+
+    # Nothing stalled means no rescue card at all.
+    pool = [_card(f"r{i}", momentum=50 - i, commits_7d=10, commits_30d=20)
+            for i in range(6)]
+    got = roles(pool)
+    ok = "rescue" not in got.values()
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  rescue: silent when none stalled "
+          f"{sorted(set(got.values()))}")
+
+    # The seasonal case: dormant projects are never rescued.
+    pool = [_card("lead", momentum=100, commits_7d=30, commits_30d=60)]
+    pool += [_card(f"asleep{i}", momentum=0, commits_7d=0, commits_30d=0,
+                   age=30, debt=2.14) for i in range(3)]
+    got = roles(pool)
+    ok = "rescue" not in got.values()
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  rescue: dormant is never rescued "
+          f"{sorted(set(got.values()))}")
+
+    # Parked, blocked and deadline-tier cards are all excluded. The lead card
+    # is given the nearer target so a deadline-tier candidate cannot be
+    # "excluded" merely by becoming the hero — that would pass for the wrong
+    # reason and prove nothing about the rule under test.
+    for label, extra in (("parked", dict(phase="parked")),
+                         ("blocked", dict(blocker="vendor key")),
+                         ("deadline tier", dict(days_to_target=5))):
+        pool = [_card("lead", momentum=100, commits_7d=30, commits_30d=60,
+                      days_to_target=1),
+                _card("excluded", momentum=9, commits_7d=0, commits_30d=40,
+                      age=12, **extra)]
+        got = roles(pool)
+        ok = got["excluded"] not in ("rescue", "hero")
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  rescue: {label:16} excluded  "
+              f"{got['excluded']}")
+
+    # Unknown activity is not a stall.
+    pool = [_card("lead", momentum=100, commits_7d=30, commits_30d=60),
+            _card("dark", momentum=None, commits_7d=None, commits_30d=None)]
+    got = roles(pool)
+    ok = got["dark"] != "rescue"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  rescue: unknown is not a stall  {got['dark']}")
+    return 1 if failures else 0
+
+
+def selftest_debt_never_rescues() -> int:
+    """Debt is essentially age, and age surfaces what is ignored on purpose.
+
+    It once chose the rescue card, which meant a seasonal project asleep all
+    summer outranked a project that died mid-flight. Debt labels a card now;
+    it must never select one again.
+    """
+    failures = 0
+    for debt in (0.0, 1.0, 5.0, 99.0):
+        pool = [_card("lead", momentum=100, commits_7d=30, commits_30d=60),
+                # Huge debt, no abandonment: asleep on purpose.
+                _card("idle", momentum=0, commits_7d=0, commits_30d=0,
+                      age=90, debt=debt),
+                # Modest debt, real abandonment: died mid-flight.
+                _card("stalled", momentum=8, commits_7d=0, commits_30d=8,
+                      age=9, debt=0.5)]
+        ordered = sorted(pool, key=ranking.order_key)
+        ranking.assign_roles(ordered)
+        picked = [c["repo"] for c in ordered if c["role"] == "rescue"]
+        ok = picked == ["stalled"]
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  rescue: debt {debt:>5} never wins   {picked}")
     return 1 if failures else 0
 
 
@@ -717,7 +841,9 @@ def main() -> int:
     failures += selftest_age_floor()
     failures += selftest_golden_order()
     failures += selftest_debt_never_orders()
+    failures += selftest_stall()
     failures += selftest_rescue_selection()
+    failures += selftest_debt_never_rescues()
     failures += selftest_debt_reason()
     failures += selftest_watched_values()
     failures += selftest_vanished()

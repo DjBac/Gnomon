@@ -83,6 +83,8 @@ def new_card(repo: str) -> dict:
         "updated": None,
         "age": None,
         "age_is_floor": False,
+        "stall": None,
+        "stall_reason": "",
         "state": "unknown",
         "commits_7d": None,
         "commits_30d": None,
@@ -204,6 +206,8 @@ async def fetch_repo(
         card["age"], stale_days, card["blocker"], card["days_to_target"],
         card["age_is_floor"],
     )
+    card["stall"] = ranking.stall(card)
+    card["stall_reason"] = ranking.stall_reason(card)
     card["order_reason"], card["order_badge"] = ranking.order_reason(card)
     card["why"] = ranking.why_line(card)
 

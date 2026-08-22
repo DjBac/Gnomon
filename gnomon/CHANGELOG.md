@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.4
+
+The rescue slot surfaces work that stopped, not projects that are asleep.
+
+- Rescue is chosen by stall — the commits a project was walked away from —
+  instead of by debt. Debt is essentially age, and the longest-untouched
+  projects are usually the ones untouched on purpose, so a seasonal tool asleep
+  all summer used to outrank a project that died mid-flight
+- A project counts as stalled when it has no commits in the last week but three
+  or more in the last month. Absence of work is not debt; work that stopped is
+- The rescue card now leads with what is at stake — `18 commits, then nothing
+  for 11 days` — rather than how long it has been quiet
+- Blocked projects are no longer rescued. A blocker is not cleared by working
+  harder, and the card already shows it
+- Deadline-tier cards are no longer rescued either; they are at the top of the
+  board already
+- Rank no longer disqualifies a candidate. The old rule looked only at cards
+  ranked 5th or lower, which was a proxy for "not already visible"
+- The slot renders nothing when nothing qualifies, which is most of the time
+
 ## 0.5.3
 
 Maintaining the board no longer makes a project look worked on.

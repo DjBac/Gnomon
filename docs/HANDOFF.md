@@ -1,7 +1,7 @@
 # HANDOFF — read me first
 
 Written 2026-08-22, end of the session that shipped 0.4.0 and 0.5.0.
-Current release: **0.5.3**, on `main` and pushed.
+Current release: **0.5.4**, on `main` and pushed.
 
 ## What Gnomon is
 
@@ -21,11 +21,11 @@ stored by hand.
 | File | Lines | Responsibility | Imports |
 |---|---|---|---|
 | `gnomon/state.py` | 169 | Parse `STATE.md` — front-matter, steps, dates, normalisation, vanished-field diffing | `yaml`, stdlib |
-| `gnomon/ranking.py` | 199 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
+| `gnomon/ranking.py` | 295 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
 | `gnomon/github.py` | 87 | The four API calls and their error notes | `aiohttp` |
-| `gnomon/app.py` | 312 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
-| `gnomon/selftest.py` | 626 | The entire test suite | `state` + `ranking` only |
-| `gnomon/www/index.html` | 874 | The whole panel — tokens, layout, render | none |
+| `gnomon/app.py` | 334 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
+| `gnomon/selftest.py` | 855 | The entire test suite | `state` + `ranking` only |
+| `gnomon/www/index.html` | 876 | The whole panel — tokens, layout, render | none |
 
 **`state.py` and `ranking.py` must never import `aiohttp`.** That is what lets
 `python3 gnomon/selftest.py` run outside the container. A test in `selftest.py`
@@ -34,7 +34,7 @@ enforces it — keep it passing.
 ## How to test
 
 ```bash
-python3 gnomon/selftest.py          # 103 assertions, must exit 0
+python3 gnomon/selftest.py          # 135 assertions, must exit 0
 ```
 
 `aiohttp` is NOT installed on Anthony's Mac, so `app.py` and `github.py` cannot
@@ -96,10 +96,25 @@ debt as a tiebreak passed the entire suite unnoticed.
 - **hero** — top card, leads with its `[>]` step as the largest text on screen.
   Suppressed only when all three hold: no `[>]`, no target within 30 days, and
   momentum exactly `0`. **Unknown momentum does not suppress it.**
-- **rescue** — at most one. Highest debt among cards ranked 5th or lower,
-  excluding `parked`, requiring `debt >= 1.0`. A card already in the top four is
-  never rescued — it does not need surfacing. Renders nothing when nothing
-  qualifies.
+- **rescue** — at most one, chosen by **stall**, never by debt:
+
+  ```
+  stall = commits_30d  when commits_7d == 0 and commits_30d >= 3, else 0
+  ```
+
+  Read it as commits walked away from. Absence of work is not debt; work that
+  *stopped* is — a project with thirty commits and then silence has thirty
+  commits of loaded context sitting there. Excluded: `parked`, blocked (a
+  blocker is not fixed by working harder), and anything in the deadline tier
+  (already at the top of the board). Rank does not disqualify. Ties go to the
+  warmer stall, which is cheaper to restart. Renders nothing when nothing
+  qualifies, which is most of the time and is correct.
+
+  **Debt no longer selects anything.** It is essentially age, and the
+  longest-untouched projects are the ones untouched on purpose — driving rescue
+  from it meant a seasonal tool asleep all summer outranked a project that died
+  mid-flight. `selftest_debt_never_rescues` defends this, in the same spirit as
+  `selftest_debt_never_orders`.
 - **tail** — everything else, in sort order.
 
 ### The rule that keeps being violated

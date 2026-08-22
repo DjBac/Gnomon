@@ -25,8 +25,7 @@ def classify(blocker: str, phase: str, age: int | None, stale_days: int) -> str:
 
 
 URGENT_DAYS = 30
-RESCUE_FLOOR = 1.0
-RESCUE_MIN_RANK = 5
+STALL_FLOOR = 3
 BLOCKED_DEBT = 1.5
 OVERDUE_DEBT = 2.0
 STAKES_ORDER = {"revenue": 0, "product": 1, "personal": 2}
@@ -105,22 +104,79 @@ def _hero_is_worth_showing(card: dict) -> bool:
     return card.get("momentum") != 0
 
 
+def stall(card: dict) -> int | None:
+    """Commits this project was walked away from. None when unknown.
+
+    Absence of work is not debt; work that stopped is. A project with thirty
+    commits and then silence has thirty commits of loaded context sitting
+    there, and the size of that abandonment is the urgency. A project that has
+    simply been asleep all month has nothing at stake and is not stalled.
+    """
+    c7 = card.get("commits_7d")
+    c30 = card.get("commits_30d")
+    if c7 is None or c30 is None:
+        return None
+    if c7 == 0 and c30 >= STALL_FLOOR:
+        return c30
+    return 0
+
+
+def _rescue_eligible(card: dict, hero: dict | None) -> bool:
+    """A rescue must be stalled, actionable, and not already on screen."""
+    if card is hero:
+        return False
+    if card.get("phase") == "parked":
+        return False
+    # A blocker is not fixed by working harder, and the card already renders
+    # it prominently.
+    if card.get("blocker"):
+        return False
+    # Deadline-tier cards are at the top of the board already. Rescuing one is
+    # shouting at something being looked at.
+    dtt = card.get("days_to_target")
+    if dtt is not None and dtt <= URGENT_DAYS:
+        return False
+    return bool(stall(card))
+
+
 def assign_roles(ordered: list[dict]) -> None:
     """Set `role` on each card. Mutates in place; `ordered` must be sorted."""
     for card in ordered:
         card["role"] = "tail"
     if not ordered:
         return
+    hero = None
     if _hero_is_worth_showing(ordered[0]):
         ordered[0]["role"] = "hero"
+        hero = ordered[0]
 
-    candidates = [
-        c
-        for c in ordered[RESCUE_MIN_RANK - 1:]
-        if c.get("phase") != "parked" and c.get("debt", 0.0) >= RESCUE_FLOOR
-    ]
+    candidates = [c for c in ordered if _rescue_eligible(c, hero)]
     if candidates:
-        max(candidates, key=lambda c: c["debt"])["role"] = "rescue"
+        # Biggest abandonment first; ties go to the warmer stall, which is
+        # cheaper to restart and likelier to actually happen.
+        best = min(
+            candidates,
+            key=lambda c: (
+                -stall(c),
+                c.get("age") if c.get("age") is not None else 10**6,
+                STAKES_ORDER.get(c.get("stakes"), 9),
+                c.get("repo", ""),
+            ),
+        )
+        best["role"] = "rescue"
+
+
+def stall_reason(card: dict) -> str:
+    """What this card walked away from, and how long ago. Empty when none."""
+    walked = stall(card)
+    if not walked:
+        return ""
+    age = card.get("age")
+    span = quiet_span(age, card.get("age_is_floor", False))
+    unit = "commit" if walked == 1 else "commits"
+    if not span:
+        return f"{walked} {unit}, then nothing"
+    return f"{walked} {unit}, then nothing for {span}"
 
 
 def _activity_clause(card: dict) -> str:

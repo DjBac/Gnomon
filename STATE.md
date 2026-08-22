@@ -14,6 +14,8 @@ steps:
   - "[x] Momentum board with hero and rescue"
   - "[x] Activity dashboard with day and night themes"
   - "[x] Explain momentum rank in order_reason, not just the count"
+  - "[x] Freshness ignores status-only commits"
+  - "[x] Rescue keys on stalled work, not on age"
 ---
 
 # Gnomon
@@ -59,9 +61,10 @@ fired. Design not settled.
 - `--unknown-c` reaches `.seg.done` via `--accent`, so an unknown card's
   progress reads 0% regardless. Fix by narrowing which consumers take it, not by
   changing the tone.
-- The rescue slot is still idle, but no longer because of the seeding: with
-  status commits excluded, the seasonal projects now carry enough debt to
-  qualify. What blocks them is the rank floor — rescue only considers cards
-  ranked 5th or lower. Decide whether to drop that rule.
+- The rescue slot now keys on stall, not debt, so it stays silent until a
+  project genuinely dies mid-flight. Seasonal projects may pass through it
+  briefly while their last real commits age out of the 30-day window; that
+  self-corrects. Only `phase: parked` can tell "stopped for summer" from
+  "stopped by accident", and Anthony chose to leave those repos unparked.
 - Nothing has been verified in a real browser. localhost is blocked in the
   agent environment; Anthony is the only one who can look at the panel.

@@ -739,7 +739,9 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     card.appendChild(el("div", "rescue-tag", "◈ NEEDS RESCUE"));
     var row = el("div", "row1");
     row.appendChild(el("span", "project", c.project));
-    row.appendChild(el("span", "age", c.debt_reason));
+    // What it walked away from, which is why it is here. debt_reason is the
+    // fallback for a rescue chosen before stall_reason existed.
+    row.appendChild(el("span", "age", c.stall_reason || c.debt_reason));
     card.appendChild(row);
     if (c.next) card.appendChild(el("div", "next", c.next));
     addIf(card, blockerBlock(c));
