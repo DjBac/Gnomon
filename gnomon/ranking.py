@@ -6,6 +6,7 @@ import datetime
 
 FRESH_MAX = 6
 MOMENTUM_RECENT_DAYS = 7
+MOMENTUM_PREVIOUS_DAYS = 14
 MOMENTUM_WINDOW_DAYS = 30
 RECENT_WEIGHT = 3
 
@@ -251,13 +252,14 @@ def why_line(card: dict) -> str:
     return " \u00b7 ".join(part for part in (reason, owed) if part)
 
 
-def commit_cutoffs(now: datetime.datetime) -> tuple[str, str]:
-    """(since timestamp for the API, date string for the 7-day boundary)."""
+def commit_cutoffs(now: datetime.datetime) -> tuple[str, str, str]:
+    """(since timestamp for the API, 7-day boundary, 14-day boundary)."""
     since = (now - datetime.timedelta(days=MOMENTUM_WINDOW_DAYS)).strftime(
         "%Y-%m-%dT%H:%M:%SZ"
     )
     cut7 = (now - datetime.timedelta(days=MOMENTUM_RECENT_DAYS)).date().isoformat()
-    return since, cut7
+    cut14 = (now - datetime.timedelta(days=MOMENTUM_PREVIOUS_DAYS)).date().isoformat()
+    return since, cut7, cut14
 
 
 def _commit_day(commit) -> str:
@@ -293,3 +295,63 @@ def count_commits(payload: list, cut7: str) -> tuple[int, int]:
     total = len(payload)
     recent = sum(1 for c in payload if _commit_day(c) >= cut7)
     return recent, total
+
+
+def count_previous_week(payload: list, cut7: str, cut14: str) -> int:
+    """Commits in the week before last week — days 8 to 14.
+
+    This is what makes a pace arrow mean something: "2/wk" says nothing on its
+    own, "2/wk, was 6/wk" is the deceleration stated outright.
+    """
+    return sum(1 for c in payload if cut14 <= _commit_day(c) < cut7)
+
+
+def hero_verdict(card: dict) -> str:
+    """The judgment behind the hero, in words. Empty when there is none.
+
+    Facts are everywhere on the board already; what the top of the screen owes
+    you is the reading of them.
+    """
+    dtt = card.get("days_to_target")
+    if dtt is not None and dtt < 0:
+        return "overdue"
+    if dtt is not None and dtt <= URGENT_DAYS:
+        trend = pace(card)
+        if trend == "down":
+            return "slowing into a deadline"
+        if trend == "up":
+            return "accelerating into a deadline"
+        return "shipping soon"
+    if card.get("blocker"):
+        return "blocked, and still your top card"
+    if pace(card) == "up":
+        return "moving fastest right now"
+    if card.get("momentum"):
+        return "your most active project"
+    return ""
+
+
+PACE_WINDOW = 4.3        # weeks in the 30-day window
+PACE_FLOOR = 10          # below this many monthly commits, say nothing
+PACE_UP = 1.25
+PACE_DOWN = 0.6
+
+
+def pace(card: dict) -> str:
+    """"up", "down" or "" — this week against the month's weekly average.
+
+    Mirrors the panel's own rule so the verdict cannot disagree with the arrow
+    rendered beside it.
+    """
+    c7 = card.get("commits_7d")
+    c30 = card.get("commits_30d")
+    if not isinstance(c7, int) or not isinstance(c30, int):
+        return ""
+    if c30 < PACE_FLOOR:
+        return ""
+    ratio = c7 / (c30 / PACE_WINDOW)
+    if ratio >= PACE_UP:
+        return "up"
+    if ratio <= PACE_DOWN:
+        return "down"
+    return ""

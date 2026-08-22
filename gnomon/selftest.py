@@ -85,12 +85,14 @@ def selftest_commits() -> int:
         print(f"{'PASS' if ok else 'FAIL'}  commits: {label:24} {got}"
               f"{'' if ok else f'  (want {want})'}")
 
-    since, cut7 = ranking.commit_cutoffs(
+    since, cut7, cut14 = ranking.commit_cutoffs(
         datetime.datetime(2026, 8, 21, 12, 0, tzinfo=datetime.timezone.utc)
     )
-    ok = since.startswith("2026-07-22") and cut7 == "2026-08-14"
+    ok = (since.startswith("2026-07-22") and cut7 == "2026-08-14"
+          and cut14 == "2026-08-07")
     failures += not ok
-    print(f"{'PASS' if ok else 'FAIL'}  commits: cutoffs               {since} / {cut7}")
+    print(f"{'PASS' if ok else 'FAIL'}  commits: cutoffs               "
+          f"{since} / {cut7} / {cut14}")
     return 1 if failures else 0
 
 
@@ -565,6 +567,80 @@ def selftest_debt_never_orders() -> int:
     return 1 if failures else 0
 
 
+def selftest_previous_week() -> int:
+    """"2/wk" says nothing alone; "was 6/wk" is the deceleration stated."""
+    failures = 0
+    payload = ([_commit(f"n{i}", "2026-08-20") for i in range(2)]
+               + [_commit(f"p{i}", "2026-08-12") for i in range(6)]
+               + [_commit(f"o{i}", "2026-08-01") for i in range(4)])
+    cut7, cut14 = "2026-08-15", "2026-08-08"
+    prev = ranking.count_previous_week(payload, cut7, cut14)
+    ok = prev == 6
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  prev: counts days 8-14        {prev}")
+
+    c7, c30 = ranking.count_commits(payload, cut7)
+    # The windows must not overlap or double-count.
+    ok = (c7, prev, c30) == (2, 6, 12)
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  prev: windows do not overlap  {(c7, prev, c30)}")
+
+    ok = ranking.count_previous_week([], cut7, cut14) == 0
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  prev: empty payload is zero   0")
+
+    since, c7cut, c14cut = ranking.commit_cutoffs(
+        __import__("datetime").datetime(2026, 8, 22, 12, 0, 0))
+    ok = c7cut == "2026-08-15" and c14cut == "2026-08-08" and since.startswith("2026-07-23")
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  prev: cutoffs                 {(c7cut, c14cut)}")
+    return 1 if failures else 0
+
+
+def selftest_hero_verdict() -> int:
+    """The verdict must agree with the arrow rendered beside it."""
+    failures = 0
+    cases = [
+        ("overdue", dict(days_to_target=-3), "overdue"),
+        ("slowing into a deadline",
+         dict(days_to_target=11, commits_7d=2, commits_30d=25),
+         "slowing into a deadline"),
+        ("accelerating into a deadline",
+         dict(days_to_target=11, commits_7d=20, commits_30d=30),
+         "accelerating into a deadline"),
+        # Below the pace floor the arrow is silent, so the verdict must be too.
+        ("deadline, pace below floor",
+         dict(days_to_target=11, commits_7d=1, commits_30d=4), "shipping soon"),
+        ("fastest right now",
+         dict(commits_7d=58, commits_30d=58, momentum=232), "moving fastest right now"),
+        ("active but steady",
+         dict(commits_7d=10, commits_30d=43, momentum=73), "your most active project"),
+        ("nothing to say",
+         dict(commits_7d=0, commits_30d=0, momentum=0), ""),
+        ("unknown says nothing",
+         dict(commits_7d=None, commits_30d=None, momentum=None), ""),
+    ]
+    for label, kw, want in cases:
+        got = ranking.hero_verdict(_card("a", **kw))
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  verdict: {label:28} {got!r}"
+              f"{'' if ok else f'  (want {want!r})'}")
+
+    # The verdict and the pace arrow are driven by one function, so they
+    # cannot disagree.
+    for c7, c30 in ((2, 25), (20, 30), (1, 4), (10, 43)):
+        card = _card("a", commits_7d=c7, commits_30d=c30, days_to_target=11)
+        trend = ranking.pace(card)
+        verdict = ranking.hero_verdict(card)
+        ok = (("slowing" in verdict) == (trend == "down")
+              and ("accelerating" in verdict) == (trend == "up"))
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  verdict: agrees with pace {c7}/{c30}  "
+              f"{trend or 'flat'} -> {verdict!r}")
+    return 1 if failures else 0
+
+
 def selftest_stall() -> int:
     """Absence of work is not debt; work that stopped is."""
     failures = 0
@@ -841,6 +917,8 @@ def main() -> int:
     failures += selftest_age_floor()
     failures += selftest_golden_order()
     failures += selftest_debt_never_orders()
+    failures += selftest_previous_week()
+    failures += selftest_hero_verdict()
     failures += selftest_stall()
     failures += selftest_rescue_selection()
     failures += selftest_debt_never_rescues()

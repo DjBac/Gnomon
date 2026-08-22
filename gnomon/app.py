@@ -83,6 +83,7 @@ def new_card(repo: str) -> dict:
         "updated": None,
         "age": None,
         "age_is_floor": False,
+        "commits_prev7": None,
         "stall": None,
         "stall_reason": "",
         "state": "unknown",
@@ -127,6 +128,7 @@ async def fetch_repo(
     stale_days: int,
     since: str,
     cut7: str,
+    cut14: str,
     seen: dict,
 ) -> dict:
     """Build one card from repo metadata, STATE.md and commit activity."""
@@ -151,6 +153,7 @@ async def fetch_repo(
     if payload is not None and book is not None:
         commits = ranking.code_commits(payload, book)
         card["commits_7d"], card["commits_30d"] = ranking.count_commits(commits, cut7)
+        card["commits_prev7"] = ranking.count_previous_week(commits, cut7, cut14)
         card["momentum"] = ranking.momentum(card["commits_7d"], card["commits_30d"])
         # Age is days since real work, not days since the last push. A push
         # that only carried a STATE.md edit must not reset it.
@@ -206,6 +209,7 @@ async def fetch_repo(
         card["age"], stale_days, card["blocker"], card["days_to_target"],
         card["age_is_floor"],
     )
+    card["verdict"] = ranking.hero_verdict(card)
     card["stall"] = ranking.stall(card)
     card["stall_reason"] = ranking.stall_reason(card)
     card["order_reason"], card["order_badge"] = ranking.order_reason(card)
@@ -252,13 +256,13 @@ async def refresh(app: web.Application) -> None:
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    since, cut7 = ranking.commit_cutoffs(datetime.now(timezone.utc))
+    since, cut7, cut14 = ranking.commit_cutoffs(datetime.now(timezone.utc))
     seen = load_seen()
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
         cards = await asyncio.gather(
             *(
-                fetch_repo(session, repo, stale_days, since, cut7, seen)
+                fetch_repo(session, repo, stale_days, since, cut7, cut14, seen)
                 for repo in repos
             )
         )

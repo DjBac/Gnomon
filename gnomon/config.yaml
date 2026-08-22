@@ -1,6 +1,6 @@
 ---
 name: Gnomon
-version: "0.5.4"
+version: "0.5.5"
 slug: gnomon
 description: At-a-glance status board for your GitHub projects, read from STATE.md
 url: https://github.com/DjBac/Gnomon/tree/main/gnomon
@@ -11,7 +11,7 @@ arch:
 init: false
 ingress: true
 ingress_port: 8099
-panel_icon: mdi:sundial
+panel_icon: mdi:sun-angle
 panel_title: Gnomon
 panel_admin: true
 options:

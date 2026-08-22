@@ -1,7 +1,7 @@
 # HANDOFF — read me first
 
 Written 2026-08-22, end of the session that shipped 0.4.0 and 0.5.0.
-Current release: **0.5.4**, on `main` and pushed.
+Current release: **0.5.5**, on `main` and pushed.
 
 ## What Gnomon is
 
@@ -21,11 +21,11 @@ stored by hand.
 | File | Lines | Responsibility | Imports |
 |---|---|---|---|
 | `gnomon/state.py` | 169 | Parse `STATE.md` — front-matter, steps, dates, normalisation, vanished-field diffing | `yaml`, stdlib |
-| `gnomon/ranking.py` | 295 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
+| `gnomon/ranking.py` | 357 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
 | `gnomon/github.py` | 87 | The four API calls and their error notes | `aiohttp` |
-| `gnomon/app.py` | 334 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
-| `gnomon/selftest.py` | 855 | The entire test suite | `state` + `ranking` only |
-| `gnomon/www/index.html` | 876 | The whole panel — tokens, layout, render | none |
+| `gnomon/app.py` | 338 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
+| `gnomon/selftest.py` | 933 | The entire test suite | `state` + `ranking` only |
+| `gnomon/www/index.html` | 921 | The whole panel — tokens, layout, render | none |
 
 **`state.py` and `ranking.py` must never import `aiohttp`.** That is what lets
 `python3 gnomon/selftest.py` run outside the container. A test in `selftest.py`
@@ -34,7 +34,7 @@ enforces it — keep it passing.
 ## How to test
 
 ```bash
-python3 gnomon/selftest.py          # 135 assertions, must exit 0
+python3 gnomon/selftest.py          # 151 assertions, must exit 0
 ```
 
 `aiohttp` is NOT installed on Anthony's Mac, so `app.py` and `github.py` cannot
@@ -126,8 +126,27 @@ touching activity must preserve the distinction.
 
 ## The panel
 
-Summary panel (completion ring, week's commit total, stakes split), then hero,
-then optional rescue, then tail rows carrying activity bars and pace arrows.
+**One "now" panel** at the top, then optional rescue, then tail rows carrying
+activity bars and pace arrows.
+
+The now panel replaced the separate summary panel and hero card in 0.5.5. It
+leads with the instruction — `Work on this now`, then the `[>]` step as the
+largest text on screen — then the project and `ranking.hero_verdict` in words,
+then progress, then three facts: days until it ships, steps left, and the rate
+*with last week's rate beside it* (`2/wk ↓ · was 6/wk`). The week is demoted to
+a strip at the foot: total commits, then triage chips counting what is shipping
+soon, stalled, and asleep. A chip with a count of zero is not drawn.
+
+The reasoning: every number in the old summary panel was true and none of them
+changed what you do next. It was a scoreboard in the most valuable position on
+the screen. **The completion ring and the stakes split were removed with it** —
+`completionRing`, `stakesBar`, `summaryLine`, `idleCount` and `svgEl` are all
+deleted. The `#summary` host div stays, display-none, so the load path is
+unchanged. Restoring any of it is one `git revert` away.
+
+`ranking.pace` was added so the verdict cannot disagree with the arrow drawn
+beside it — a test asserts they move together. `commits_prev7` comes from the
+same commits payload, no extra call.
 
 **Pace:** `ratio = commits_7d / (commits_30d / 4.3)`, up at `>= 1.25`, down at
 `<= 0.6`, nothing between — and **suppressed entirely below 10 commits in 30

@@ -11,8 +11,8 @@ Ordered roughly by how much they matter.
 
 **`--unknown-c` reaches data-bearing surfaces.**
 It is routed through `--accent`, so besides the accent rail it also paints
-`.seg.done`, `.actbar i`, `.badge` (text and border) and `.steps li.current
-.mark`. Done-segments against their track measure 1.40:1 in day and 1.30:1 at
+`.seg.done`, `.actbar i`, `.badge` (text and border), `.nowline`, `.verdict`
+and `.steps li.current .mark`. Done-segments against their track measure 1.40:1 in day and 1.30:1 at
 night, so an unknown-state card's progress row reads as 0% regardless of actual
 progress. Reachable when a repo has a `STATE.md` but no pushes.
 The alpha itself is correct — raising it to make segments legible collapses the
@@ -32,22 +32,12 @@ column.
 or parked card by day makes it 0.02 dimmer instead of lifting it. Imperceptible,
 and leaving `:hover` alone was explicit.
 
-**Stakes segment widths sum to 99–101%.**
-About a fifth of realistic three-way splits mis-round. `.stakes` paints no
-background, so a 99% sum shows a hairline notch; 101% silently flex-shrinks. The
-text key can read 101%. One-line hardening if it ever annoys:
-`.stakes { background: var(--track) }`.
-
-**The stakes key does not legend.**
-All three labels are `--text-3`, so nothing links "34% product" to the blue
-segment. It also emits `0% product` labels on a degenerate split.
-
-**The hero's pace arrow does not share the meta baseline.**
-`.pace` is 11.5px inside a `.meta` of 9.5px with default `align-items: stretch`.
-Sub-pixel; `align-items: baseline` fixes it if the file is open anyway.
-
-**The ring `<svg>` carries `aria-label` without `role="img"`**, which several
-screen readers ignore.
+**Config values are not validated against anything.** `panel_icon: mdi:sundial`
+shipped for months and rendered a blank sidebar icon, because MDI has no
+`sundial` and Home Assistant draws nothing rather than falling back. No test
+could have caught it — the suite never reads `config.yaml`, and validating icon
+names would mean shipping a copy of the MDI index. Worth knowing that this file
+has no coverage at all.
 
 ## Contrast
 
@@ -106,12 +96,6 @@ rather than quiet, which is the point. A mechanical contrast audit will flag it.
 **`--stale-c` and `--text-3` are intentionally identical** (`#6d7684` night,
 `#7a8290` day) — both are Argus values. `unknown` was given its own token
 instead of changing either.
-
-**Coercing `null` to zero in `stakesBar` is an equivalent mutation.**
-`by[key] += null` evaluates to `+= 0` in JavaScript, so for null input excluding
-and adding-zero are arithmetically identical and no test can distinguish them.
-The guard still earns its place: with `undefined` it is the difference between
-correct widths and `NaN%`.
 
 **`.card` and `button.refresh` hardcode `backdrop-filter` instead of using
 `--blur`.** Zero visual impact — day surfaces are opaque — but it forces GPU

@@ -141,52 +141,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 
 /* ---------- summary ---------- */
 
-#summary { margin: 1rem 0 1.1rem; }
-
-.summary {
-  background: var(--surface);
-  border: 1px solid var(--border);
-  border-radius: var(--r-xl);
-  padding: .85rem .9rem .8rem;
-  box-shadow: var(--shadow-card);
-  -webkit-backdrop-filter: var(--blur);
-  backdrop-filter: var(--blur);
-}
-
-.sumrow { display: flex; gap: .9rem; align-items: center; }
-.sumtext { min-width: 0; }
-
-.sumtext .hdr {
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: var(--track-caps);
-  color: var(--text-3);
-}
-.sumtext .big {
-  font-size: var(--fs-num);
-  font-weight: 640;
-  letter-spacing: var(--track-tight);
-  margin-top: .15rem;
-}
-.sumtext .sub {
-  font-size: var(--fs-caption);
-  color: var(--text-2);
-  margin-top: .1rem;
-}
-
-.ring { flex: none; }
-.ring-track { stroke: var(--track); }
-.ring-fill { stroke: var(--ok); }
-
-.stakes { display: flex; height: 5px; border-radius: var(--r-bar); overflow: hidden; margin: .75rem 0 .4rem; }
-.stakes i { display: block; }
-.stakekey {
-  display: flex; gap: .7rem;
-  font-size: var(--fs-micro);
-  text-transform: uppercase;
-  letter-spacing: var(--track-caps);
-  color: var(--text-3);
-}
+#summary { display: none; }
 
 /* ---------- card ---------- */
 
@@ -247,6 +202,108 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   font-style: italic;
 }
 .card.hero .prog { margin: .5rem 0 .7rem; }
+
+/* ---------- now panel ---------- */
+
+.card.now { padding: 1.1rem 1rem .9rem; margin-bottom: .6rem; border-radius: var(--r-xl); }
+
+.nowline {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: .45rem;
+}
+
+.card.now .hero-next {
+  font-size: 1.3125rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: var(--track-tight);
+  margin: .1rem 0;
+}
+.card.now .hero-next.empty {
+  font-size: 1rem;
+  font-weight: 400;
+  color: var(--text-3);
+  font-style: italic;
+}
+
+.verdict {
+  display: flex;
+  align-items: baseline;
+  gap: .35rem;
+  flex-wrap: wrap;
+  margin-top: .45rem;
+  font-size: var(--fs-label);
+  font-weight: 600;
+  letter-spacing: .03em;
+  text-transform: uppercase;
+  color: var(--accent);
+}
+.verdict .sep { opacity: .4; font-weight: 400; }
+.verdict .cool { color: var(--text-3); font-weight: 500; }
+
+.facts {
+  display: flex;
+  gap: .9rem;
+  flex-wrap: wrap;
+  margin-top: .7rem;
+  padding-top: .65rem;
+  border-top: 1px solid var(--border);
+}
+.fact { display: flex; flex-direction: column; gap: .1rem; }
+.fact b {
+  font-size: var(--fs-emph);
+  font-weight: 650;
+  letter-spacing: var(--track-tight);
+}
+.fact b.warnc { color: var(--crit); }
+.fact b.okc { color: var(--ok); }
+.fact span {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--text-3);
+}
+
+.strip {
+  display: flex;
+  align-items: center;
+  gap: .5rem;
+  flex-wrap: wrap;
+  margin-top: .8rem;
+  padding-top: .7rem;
+  border-top: 1px solid var(--border);
+}
+.strip .item { display: flex; flex-direction: column; }
+.strip .n { font-size: var(--fs-title); font-weight: 700; letter-spacing: var(--track-tight); }
+.strip .l {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--text-3);
+}
+.strip .spacer { flex: 1; min-width: .5rem; }
+.card.now.bare { padding-top: .9rem; }
+.card.now.bare .strip { margin-top: 0; padding-top: 0; border-top: none; }
+
+.chip {
+  display: flex;
+  align-items: baseline;
+  gap: .28rem;
+  font-size: var(--fs-note);
+  letter-spacing: .01em;
+  border: 1px solid var(--border);
+  border-radius: var(--r-pill);
+  padding: .18rem .5rem;
+  color: var(--text-2);
+}
+.chip b { font-weight: 700; }
+.chip.crit { color: var(--crit); border-color: currentColor; }
+.chip.warn { color: var(--warn); border-color: currentColor; }
+.chip.calm { color: var(--text-3); }
 
 .badge {
   margin-left: auto;
@@ -473,6 +530,9 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 (function () {
   "use strict";
 
+  var URGENT_DAYS = 30;    // matches ranking.URGENT_DAYS
+  var URGENT_SOON = 14;    // inside two weeks the countdown turns critical
+
   var ACCENT = {
     blocked: "var(--crit)",
     stale:   "var(--stale-c)",
@@ -620,117 +680,114 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     if (child) parent.appendChild(child);
   }
 
-  var SVG_NS = "http://www.w3.org/2000/svg";
-  var RING_C = 251.3;
-  var STAKES_ORDER = ["revenue", "product", "personal"];
-
-  function svgEl(tag, attrs) {
-    var node = document.createElementNS(SVG_NS, tag);
-    Object.keys(attrs).forEach(function (k) { node.setAttribute(k, attrs[k]); });
-    return node;
-  }
-
-  // Argus ring geometry: viewBox 92, r=40, stroke=8, circumference 251.3,
-  // rotated -90 so it starts at twelve o'clock.
-  function completionRing(done, total) {
-    if (!total) return null;
-    var pct = Math.round(100 * done / total);
-    var offset = Math.round(RING_C * (1 - done / total) * 100) / 100;
-    var svg = svgEl("svg", {
-      "class": "ring", width: "76", height: "76", viewBox: "0 0 92 92",
-      "aria-label": pct + " percent complete"
-    });
-    svg.appendChild(svgEl("circle", {
-      "class": "ring-track", cx: "46", cy: "46", r: "40",
-      fill: "none", "stroke-width": "8"
-    }));
-    svg.appendChild(svgEl("circle", {
-      "class": "ring-fill", cx: "46", cy: "46", r: "40",
-      fill: "none", "stroke-width": "8", "stroke-linecap": "round",
-      "stroke-dasharray": String(RING_C),
-      "stroke-dashoffset": String(offset),
-      transform: "rotate(-90 46 46)"
-    }));
-    return svg;
-  }
-
-  function idleCount(cards) {
-    return cards.filter(function (c) {
-      return c.next && typeof c.commits_7d === "number" && c.commits_7d <= 2;
-    }).length;
-  }
-
-  function summaryLine(cards) {
-    var done = 0, total = 0, blocked = 0, stale = 0;
-    cards.forEach(function (c) {
-      done += c.steps_done || 0;
-      total += c.steps_total || 0;
-      if (c.state === "blocked") blocked++;
-      if (c.state === "stale") stale++;
-    });
-    var idle = idleCount(cards);
-    var parts = [];
-    if (total) parts.push(done + " of " + total + " steps · " + Math.round(100 * done / total) + "%");
-    if (idle) parts.push(idle + " idle");
-    if (blocked) parts.push(blocked + " blocked");
-    if (stale) parts.push(stale + " stale");
-    return parts.join(" · ");
-  }
-
   function weekTotal(cards) {
     return cards.reduce(function (n, c) {
       return n + (typeof c.commits_7d === "number" ? c.commits_7d : 0);
     }, 0);
   }
 
-  function stakesBar(cards) {
-    var by = { revenue: 0, product: 0, personal: 0 };
-    var total = 0;
-    cards.forEach(function (c) {
-      if (typeof c.commits_7d !== "number") return;
-      var key = by.hasOwnProperty(c.stakes) ? c.stakes : "personal";
-      by[key] += c.commits_7d;
-      total += c.commits_7d;
-    });
-    if (!total) return null;
-    var wrap = el("div");
-    var bar = el("div", "stakes");
-    var key = el("div", "stakekey");
-    var tone = { revenue: "var(--ok)", product: "var(--run)", personal: "var(--stale-c)" };
-    STAKES_ORDER.forEach(function (k) {
-      var pct = Math.round(100 * by[k] / total);
-      var seg = el("i");
-      seg.style.setProperty("width", pct + "%");
-      seg.style.setProperty("background", tone[k]);
-      bar.appendChild(seg);
-      key.appendChild(el("span", null, pct + "% " + k));
-    });
-    wrap.appendChild(bar);
-    wrap.appendChild(key);
-    return wrap;
+  function factCell(value, label, tone) {
+    var cell = el("div", "fact");
+    cell.appendChild(el("b", tone ? tone : null, value));
+    cell.appendChild(el("span", null, label));
+    return cell;
   }
 
-  function heroCard(c) {
-    var card = cardShell(c, "card hero");
-    var row = el("div", "row1");
-    row.appendChild(el("span", "project", c.project));
-    // order_badge can be "" when every repo's metadata call failed; an empty
-    // badge span would still draw its border, so it's only added when there
-    // is text to show.
-    if (c.order_badge) row.appendChild(el("span", "badge", c.order_badge));
-    card.appendChild(row);
+  function rateFact(c) {
+    if (typeof c.commits_7d !== "number") return null;
+    var dir = pace(c);
+    var now = c.commits_7d + "/wk" + (dir === "up" ? " \u2191" : (dir === "down" ? " \u2193" : ""));
+    // "2/wk" says nothing on its own. "was 6/wk" is the deceleration stated.
+    var was = typeof c.commits_prev7 === "number"
+      ? "was " + c.commits_prev7 + "/wk"
+      : "this week";
+    return factCell(now, was, dir === "down" ? "warnc" : (dir === "up" ? "okc" : null));
+  }
 
-    addIf(card, progressRow(c));
+  function heroFacts(c) {
+    var row = el("div", "facts");
+    var dtt = c.days_to_target;
+    if (typeof dtt === "number") {
+      if (dtt < 0) {
+        row.appendChild(factCell(-dtt + (dtt === -1 ? " day" : " days"), "overdue", "warnc"));
+      } else {
+        row.appendChild(factCell(dtt + (dtt === 1 ? " day" : " days"),
+                                 dtt === 0 ? "ships today" : "until it ships",
+                                 dtt <= URGENT_SOON ? "warnc" : null));
+      }
+    } else if (typeof c.momentum === "number") {
+      row.appendChild(factCell(String(c.momentum), "momentum"));
+    }
+    if (c.steps_total) {
+      var left = c.steps_total - c.steps_done;
+      row.appendChild(factCell(left ? left + " left" : "all done",
+                               left === 1 ? "step to do" : "steps to do"));
+    }
+    addIf(row, rateFact(c));
+    return row.children.length ? row : null;
+  }
+
+  function triageChips(cards) {
+    var soon = 0, stalled = 0, asleep = 0;
+    cards.forEach(function (c) {
+      if (typeof c.days_to_target === "number" && c.days_to_target <= URGENT_DAYS) soon++;
+      if (c.stall) stalled++;
+      if (c.momentum === 0) asleep++;
+    });
+    var row = el("div", "triage");
+    function chip(n, label, tone) {
+      if (!n) return;
+      var span = el("span", "chip " + tone);
+      span.appendChild(el("b", null, String(n)));
+      span.appendChild(el("span", null, label));
+      row.appendChild(span);
+    }
+    chip(soon, "shipping soon", "crit");
+    chip(stalled, "stalled", "warn");
+    chip(asleep, "asleep", "calm");
+    return row.children.length ? row : null;
+  }
+
+  function weekStrip(cards) {
+    var strip = el("div", "strip");
+    var known = cards.some(function (c) { return typeof c.commits_7d === "number"; });
+    var item = el("div", "item");
+    item.appendChild(el("span", "n", known ? String(weekTotal(cards)) : "\u2014"));
+    item.appendChild(el("span", "l", known ? "commits this week" : "activity unknown"));
+    strip.appendChild(item);
+    strip.appendChild(el("div", "spacer"));
+    var chips = triageChips(cards);
+    if (chips) {
+      // The chips live inside the strip so the panel keeps one bottom rule.
+      Array.prototype.slice.call(chips.children).forEach(function (ch) {
+        strip.appendChild(ch);
+      });
+    }
+    return strip;
+  }
+
+  function nowPanel(c, cards) {
+    // One block at the top of the board: an instruction, the reading behind
+    // it, then the week demoted to context at the foot.
+    var card = cardShell(c, "card now");
+    card.appendChild(el("div", "nowline", "Work on this now"));
     card.appendChild(
       c.next ? el("div", "hero-next", c.next)
              : el("div", "hero-next empty", "Nothing in flight")
     );
+    var verdict = el("div", "verdict");
+    verdict.appendChild(el("span", null, c.project));
+    if (c.verdict) {
+      verdict.appendChild(el("span", "sep", "\u00b7"));
+      verdict.appendChild(el("span", "cool", c.verdict));
+    }
+    card.appendChild(verdict);
+    addIf(card, progressRow(c));
     addIf(card, blockerBlock(c));
-    var meta = metaRow([c.stakes, c.phase, activityLabel(c)]);
-    addIf(meta, paceGlyph(c));
-    card.appendChild(meta);
+    addIf(card, heroFacts(c));
     addIf(card, c.note ? el("div", "note", c.note) : null);
     addIf(card, detailBlock(c));
+    card.appendChild(weekStrip(cards));
     return card;
   }
 
@@ -781,34 +838,22 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     var rescue = cards.filter(function (c) { return c.role === "rescue"; });
     var tail = cards.filter(function (c) { return c.role !== "hero" && c.role !== "rescue"; });
     var max = maxCommits(cards);
-    hero.forEach(function (c) { board.appendChild(heroCard(c)); });
+    if (hero.length) {
+      hero.forEach(function (c) { board.appendChild(nowPanel(c, cards)); });
+    } else {
+      // No card earned the top slot, so the week still needs somewhere to go.
+      var bare = el("div", "card now bare");
+      bare.appendChild(weekStrip(cards));
+      board.appendChild(bare);
+    }
     rescue.forEach(function (c) { board.appendChild(rescueCard(c)); });
     tail.forEach(function (c) { board.appendChild(tailRow(c, max)); });
   }
 
   function renderSummary(cards) {
-    var host = document.getElementById("summary");
-    host.textContent = "";
-    if (!cards.length) return;
-
-    var done = 0, total = 0;
-    cards.forEach(function (c) { done += c.steps_done || 0; total += c.steps_total || 0; });
-
-    var panel = el("div", "summary");
-    var row = el("div", "sumrow");
-    addIf(row, completionRing(done, total));
-
-    var text = el("div", "sumtext");
-    text.appendChild(el("div", "hdr", "this week"));
-    var known = cards.some(function (c) { return typeof c.commits_7d === "number"; });
-    text.appendChild(el("div", "big", known ? weekTotal(cards) + " commits" : "activity unknown"));
-    var line = summaryLine(cards);
-    if (line) text.appendChild(el("div", "sub", line));
-    row.appendChild(text);
-    panel.appendChild(row);
-
-    addIf(panel, stakesBar(cards));
-    host.appendChild(panel);
+    // The summary panel was merged into the now panel at the top of the
+    // board. The host stays so the markup and the load path are unchanged.
+    document.getElementById("summary").textContent = "";
   }
 
   function stamp(iso) {

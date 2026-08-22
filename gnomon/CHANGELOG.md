@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.5.5
+
+The top of the board tells you what to do instead of how busy you were.
+
+- The summary panel and the hero card are now one block. It leads with the
+  instruction, then the project and the reading behind it in words — "slowing
+  into a deadline" — then days left, steps left, and the rate
+- The rate names last week beside it: `2/wk down, was 6/wk`. An arrow on its own
+  never said how much it had slowed by
+- The week is demoted to a strip at the foot: total commits, then counts of what
+  is shipping soon, stalled and asleep. A count of zero is not drawn
+- The completion ring and the stakes split are gone. Every number in the old
+  summary was true and none of them changed what to do next
+- The sidebar icon is fixed. `mdi:sundial` does not exist in Material Design
+  Icons, so Home Assistant drew nothing at all; it is now `mdi:sun-angle`
+
 ## 0.5.4
 
 The rescue slot surfaces work that stopped, not projects that are asleep.

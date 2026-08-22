@@ -16,6 +16,7 @@ steps:
   - "[x] Explain momentum rank in order_reason, not just the count"
   - "[x] Freshness ignores status-only commits"
   - "[x] Rescue keys on stalled work, not on age"
+  - "[x] One now panel replaces the summary and the hero"
 ---
 
 # Gnomon
