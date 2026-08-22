@@ -94,7 +94,8 @@ def new_card(repo: str) -> dict:
         "debt_reason": "",
         "role": "tail",
         "order_reason": "",
-        "order_badge": "",
+        "also_label": "",
+        "also": "",
         "why": "",
         "note": "",
     }
@@ -212,7 +213,7 @@ async def fetch_repo(
     card["verdict"] = ranking.hero_verdict(card)
     card["stall"] = ranking.stall(card)
     card["stall_reason"] = ranking.stall_reason(card)
-    card["order_reason"], card["order_badge"] = ranking.order_reason(card)
+    card["order_reason"] = ranking.order_reason(card)
     card["why"] = ranking.why_line(card)
 
     previous = seen.get(repo, {})
@@ -270,6 +271,8 @@ async def refresh(app: web.Application) -> None:
 
     ordered = sorted(list(cards), key=ranking.order_key)
     ranking.assign_roles(ordered)
+    if ordered:
+        ordered[0]["also_label"], ordered[0]["also"] = ranking.also_line(ordered)
     app["cache"] = {
         "projects": ordered,
         "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),

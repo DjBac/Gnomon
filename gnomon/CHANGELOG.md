@@ -1,5 +1,25 @@
 # Changelog
 
+## 0.5.6
+
+A deadline leads the board only when it actually needs you.
+
+- Having a date used to be enough to take the top slot, so one dated project
+  held it indefinitely and the best position on the screen became wallpaper. A
+  dated project now leads when it is overdue, inside its final week, dormant,
+  or visibly decelerating, and yields to momentum otherwise
+- Only a project that can positively be seen holding its pace is demoted.
+  Unreadable activity, no commits at all, and a silent pace arrow all count as
+  at risk — the arrow says nothing below ten commits a month, which is exactly
+  where a dormant project with a date approaching would hide
+- A dated project that yields the top slot is never lost. The now panel gained
+  a line naming what it is not showing: the on-track deadline, or failing that
+  the runner-up
+- When momentum leads, the date is still reported, after the commit counts
+  rather than ahead of them
+- Removed the order badge, which nothing has rendered since the summary and
+  hero panels merged
+
 ## 0.5.5
 
 The top of the board tells you what to do instead of how busy you were.

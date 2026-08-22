@@ -144,12 +144,21 @@ def _card(repo, **kw):
 def selftest_ordering() -> int:
     failures = 0
 
-    # a near deadline outranks higher momentum
+    # a near deadline outranks higher momentum when it is at risk
     cards = [_card("busy", momentum=200), _card("due", days_to_target=12, momentum=1)]
     got = [c["repo"] for c in sorted(cards, key=ranking.order_key)]
     ok = got == ["due", "busy"]
     failures += not ok
     print(f"{'PASS' if ok else 'FAIL'}  order: deadline beats momentum  {got}")
+
+    # but a deadline visibly holding its pace does not take the top
+    cards = [_card("busy", commits_7d=58, commits_30d=58, momentum=232),
+             _card("ontrack", days_to_target=24, commits_7d=20,
+                   commits_30d=30, momentum=90)]
+    got = [c["repo"] for c in sorted(cards, key=ranking.order_key)]
+    ok = got == ["busy", "ontrack"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  order: on-track date yields     {got}")
 
     # a distant target does not enter the urgent tier
     cards = [_card("busy", momentum=200), _card("far", days_to_target=400, momentum=1)]
@@ -317,14 +326,14 @@ def selftest_age_floor() -> int:
     # The clause names the floor rather than inventing a precise age.
     card = _card("a", commits_7d=0, commits_30d=0, momentum=0, age=30)
     card["age_is_floor"] = True
-    got, _ = ranking.order_reason(card)
+    got = ranking.order_reason(card)
     ok = got == "no code in 30+ days"
     failures += not ok
     print(f"{'PASS' if ok else 'FAIL'}  floor: clause names the floor    {got!r}")
 
     # A measured age keeps the old wording.
     card = _card("a", commits_7d=0, commits_30d=0, momentum=0, age=40)
-    got, _ = ranking.order_reason(card)
+    got = ranking.order_reason(card)
     ok = got == "quiet for 40 days"
     failures += not ok
     print(f"{'PASS' if ok else 'FAIL'}  floor: measured age unchanged    {got!r}")
@@ -332,7 +341,7 @@ def selftest_age_floor() -> int:
     # debt_reason agrees with the clause, and the footer says it once.
     card = _card("a", commits_7d=0, commits_30d=0, momentum=0, age=30)
     card["age_is_floor"] = True
-    card["order_reason"], _ = ranking.order_reason(card)
+    card["order_reason"] = ranking.order_reason(card)
     card["debt_reason"] = ranking.debt_reason(30, 14, "", None, True)
     line = ranking.why_line(card)
     ok = line == "no code in 30+ days" and line.count("30+") == 1
@@ -353,7 +362,7 @@ def selftest_why_line() -> int:
     def line(**kw):
         kw.setdefault("blocker", "")
         card = _card("a", **kw)
-        card["order_reason"], _ = ranking.order_reason(card)
+        card["order_reason"] = ranking.order_reason(card)
         card["debt_reason"] = ranking.debt_reason(
             card.get("age"), 14, card["blocker"], card.get("days_to_target")
         )
@@ -410,7 +419,7 @@ def selftest_reason_matches_sort_key() -> int:
     for c7, c30 in ((18, 100), (30, 33), (0, 9), (1, 1), (51, 51)):
         mom = ranking.momentum(c7, c30)
         card = _card("a", commits_7d=c7, commits_30d=c30, momentum=mom)
-        sentence, _ = ranking.order_reason(card)
+        sentence = ranking.order_reason(card)
         stated = sentence.split()[1] if sentence.startswith("momentum ") else ""
         ranked = -ranking.order_key(card)[2]
         ok = stated == str(mom) == str(ranked)
@@ -422,64 +431,157 @@ def selftest_reason_matches_sort_key() -> int:
     quiet = _card("q", commits_7d=18, commits_30d=100, momentum=154)
     busy = _card("b", commits_7d=30, commits_30d=33, momentum=123)
     ranks = sorted([quiet, busy], key=ranking.order_key)
-    ok = ranks[0] is quiet and "100" in ranking.order_reason(quiet)[0]
+    ok = ranks[0] is quiet and "100" in ranking.order_reason(quiet)
     failures += not ok
     print(f"{'PASS' if ok else 'FAIL'}  reason: inversion explained     "
-          f"{ranking.order_reason(quiet)[0]}")
+          f"{ranking.order_reason(quiet)}")
     return 1 if failures else 0
 
 
 def selftest_order_reason() -> int:
     cases = [
-        # The deadline leads; the momentum clause follows when activity is known.
-        ("ships soon", _card("a", days_to_target=12, commits_7d=2,
-                             commits_30d=25, momentum=31),
-         ("ships in 12 days \u00b7 momentum 31 - 2 this week, 25 this month",
-          "SHIPS 12d")),
-        ("ships today", _card("a", days_to_target=0, commits_7d=4,
-                              commits_30d=4, momentum=16),
-         ("ships today \u00b7 momentum 16 - 4 this week, 4 this month",
-          "SHIPS today")),
-        ("overdue", _card("a", days_to_target=-3, commits_7d=1,
-                          commits_30d=9, momentum=12),
-         ("3 days overdue \u00b7 momentum 12 - 1 this week, 9 this month",
-          "3d OVERDUE")),
-        # Unknown is not zero: no clause rather than an invented momentum.
+        # At risk: the deadline leads, then the momentum clause.
+        ("overdue leads", _card("a", days_to_target=-3, commits_7d=1,
+                                commits_30d=9, momentum=12),
+         "3 days overdue \u00b7 momentum 12 - 1 this week, 9 this month"),
+        ("ships today leads", _card("a", days_to_target=0, commits_7d=4,
+                                    commits_30d=4, momentum=16),
+         "ships today \u00b7 momentum 16 - 4 this week, 4 this month"),
+        ("final week leads", _card("a", days_to_target=5, commits_7d=20,
+                                   commits_30d=30, momentum=90),
+         "ships in 5 days \u00b7 momentum 90 - 20 this week, 30 this month"),
+        ("decelerating leads", _card("a", days_to_target=12, commits_7d=2,
+                                     commits_30d=25, momentum=31),
+         "ships in 12 days \u00b7 momentum 31 - 2 this week, 25 this month"),
+        # Not at risk: momentum leads, the date follows without shouting.
+        ("on track follows", _card("a", days_to_target=24, commits_7d=20,
+                                   commits_30d=30, momentum=90),
+         "momentum 90 - 20 this week, 30 this month \u00b7 ships in 24 days"),
+        # A date beyond the window is not mentioned at all.
+        ("distant date is silent", _card("a", days_to_target=200, commits_7d=20,
+                                          commits_30d=30, momentum=90),
+         "momentum 90 - 20 this week, 30 this month"),
+        ("active", _card("a", commits_7d=51, commits_30d=51, momentum=204),
+         "momentum 204 - 51 this week, 51 this month"),
+        ("one commit", _card("a", commits_7d=1, commits_30d=1, momentum=4),
+         "momentum 4 - 1 this week, 1 this month"),
+        ("older work only", _card("a", commits_7d=0, commits_30d=9, momentum=9),
+         "momentum 9 - 0 this week, 9 this month"),
+        ("busier week, lower rank",
+         _card("a", commits_7d=30, commits_30d=33, momentum=123),
+         "momentum 123 - 30 this week, 33 this month"),
+        ("quieter week, higher rank",
+         _card("a", commits_7d=18, commits_30d=100, momentum=154),
+         "momentum 154 - 18 this week, 100 this month"),
         ("deadline, activity unknown",
          _card("a", days_to_target=8, momentum=None, commits_7d=None,
                commits_30d=None),
-         ("ships in 8 days", "SHIPS 8d")),
-        # Genuinely zero falls through to the quiet wording, not "momentum 0".
+         "ships in 8 days"),
+        # A date approaching with no work at all is the most at-risk case
+        # there is, and the pace arrow is silent there — so it must not be
+        # mistaken for on track.
         ("deadline, genuinely quiet",
          _card("a", days_to_target=21, commits_7d=0, commits_30d=0,
                momentum=0, age=40),
-         ("ships in 21 days \u00b7 quiet for 40 days", "SHIPS 21d")),
-        ("active", _card("a", commits_7d=51, commits_30d=51, momentum=204),
-         ("momentum 204 - 51 this week, 51 this month", "51/wk")),
-        ("one commit", _card("a", commits_7d=1, commits_30d=1, momentum=4),
-         ("momentum 4 - 1 this week, 1 this month", "1/wk")),
-        ("older work only", _card("a", commits_7d=0, commits_30d=9, momentum=9),
-         ("momentum 9 - 0 this week, 9 this month", "9/mo")),
-        # The inversion the sentence exists to explain: fewer commits this
-        # week, higher rank, because the month carries the score.
-        ("busier week, lower rank",
-         _card("a", commits_7d=30, commits_30d=33, momentum=123),
-         ("momentum 123 - 30 this week, 33 this month", "30/wk")),
-        ("quieter week, higher rank",
-         _card("a", commits_7d=18, commits_30d=100, momentum=154),
-         ("momentum 154 - 18 this week, 100 this month", "18/wk")),
+         "ships in 21 days \u00b7 quiet for 40 days"),
         ("quiet", _card("a", commits_7d=0, commits_30d=0, momentum=0, age=94),
-         ("quiet for 94 days", "quiet")),
+         "quiet for 94 days"),
         ("unknown", _card("a", momentum=None, commits_7d=None, commits_30d=None),
-         ("activity unknown", "—")),
+         "activity unknown"),
     ]
     failures = 0
     for label, card, want in cases:
         got = ranking.order_reason(card)
         ok = got == want
         failures += not ok
-        print(f"{'PASS' if ok else 'FAIL'}  reason: {label:20} {got}"
-              f"{'' if ok else f'  (want {want})'}")
+        print(f"{'PASS' if ok else 'FAIL'}  reason: {label:24} {got!r}"
+              f"{'' if ok else f'  (want {want!r})'}")
+    return 1 if failures else 0
+
+
+def selftest_at_risk() -> int:
+    """Having a date is not the same as needing the top of the board."""
+    failures = 0
+    cases = [
+        ("overdue", dict(days_to_target=-1, commits_7d=20, commits_30d=30,
+                         momentum=90), True),
+        ("final week", dict(days_to_target=7, commits_7d=20, commits_30d=30,
+                            momentum=90), True),
+        ("just past the final week, holding pace",
+         dict(days_to_target=8, commits_7d=20, commits_30d=30, momentum=90), False),
+        ("decelerating", dict(days_to_target=24, commits_7d=2, commits_30d=25,
+                              momentum=31), True),
+        ("on track", dict(days_to_target=24, commits_7d=20, commits_30d=30,
+                          momentum=90), False),
+        # Unknown must not be read as reassurance.
+        ("unknown pace", dict(days_to_target=20, momentum=None,
+                              commits_7d=None, commits_30d=None), True),
+        ("no date", dict(commits_7d=20, commits_30d=30, momentum=90), False),
+        # Dormant with a date approaching: the pace arrow is silent here.
+        ("dated but dormant",
+         dict(days_to_target=21, commits_7d=0, commits_30d=0, momentum=0), True),
+        ("dated, activity unreadable",
+         dict(days_to_target=21, commits_7d=None, commits_30d=None, momentum=1), True),
+        ("date beyond the window",
+         dict(days_to_target=200, commits_7d=2, commits_30d=25, momentum=31), False),
+    ]
+    for label, kw, want in cases:
+        got = ranking.at_risk(_card("a", **kw))
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  risk: {label:38} {got}")
+
+    faster = _card("fast", commits_7d=58, commits_30d=58, momentum=232)
+    on_track = _card("dated", days_to_target=24, commits_7d=20,
+                     commits_30d=30, momentum=90)
+    ordered = sorted([on_track, faster], key=ranking.order_key)
+    ok = ordered[0]["repo"] == "fast"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  risk: on-track yields the top     "
+          f"{[c['repo'] for c in ordered]}")
+
+    slowing = _card("dated", days_to_target=24, commits_7d=2,
+                    commits_30d=25, momentum=31)
+    ordered = sorted([slowing, faster], key=ranking.order_key)
+    ok = ordered[0]["repo"] == "dated"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  risk: slowing takes it back       "
+          f"{[c['repo'] for c in ordered]}")
+    return 1 if failures else 0
+
+
+def selftest_also_line() -> int:
+    """The panel must always name what it is not showing."""
+    failures = 0
+    hero = _card("fast", project="Argus", commits_7d=58, commits_30d=58,
+                 momentum=232)
+    dated = _card("dated", project="anthonyvenitis.com", days_to_target=24,
+                  commits_7d=20, commits_30d=30, momentum=90,
+                  steps_done=5, steps_total=7)
+    quiet = _card("quiet", project="Doukas", commits_7d=0, commits_30d=0,
+                  momentum=0)
+    nima = _card("b", project="Nima", commits_7d=22, commits_30d=40,
+                 momentum=106)
+
+    got = ranking.also_line([hero, dated, quiet])
+    ok = got == ("On track", "anthonyvenitis.com ships in 24 days, 2 steps left")
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  also: dated card never vanishes   {got}")
+
+    got = ranking.also_line([hero, quiet, nima])
+    ok = got == ("Also", "Nima \u00b7 22/wk")
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  also: falls back to runner-up     {got}")
+
+    got = ranking.also_line([hero])
+    ok = got == ("", "")
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  also: silent with one card        {got}")
+
+    got = ranking.also_line([hero, quiet])
+    ok = got == ("", "")
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  also: silent when nothing to say  {got}")
     return 1 if failures else 0
 
 
@@ -911,6 +1013,8 @@ def main() -> int:
     failures += selftest_ordering()
     failures += selftest_roles()
     failures += selftest_order_reason()
+    failures += selftest_at_risk()
+    failures += selftest_also_line()
     failures += selftest_reason_matches_sort_key()
     failures += selftest_why_line()
     failures += selftest_code_commits()

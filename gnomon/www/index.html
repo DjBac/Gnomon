@@ -305,17 +305,17 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 .chip.warn { color: var(--warn); border-color: currentColor; }
 .chip.calm { color: var(--text-3); }
 
-.badge {
-  margin-left: auto;
-  flex: none;
-  font-size: .5938rem;
-  font-weight: 600;
-  letter-spacing: .07em;
-  color: var(--accent);
-  border: 1px solid currentColor;
-  border-radius: 980px;
-  padding: .1rem .4rem;
+.also {
+  display: flex;
+  gap: .4rem;
+  flex-wrap: wrap;
+  margin-top: .7rem;
+  padding-top: .6rem;
+  border-top: 1px solid var(--border);
+  font-size: var(--fs-caption);
+  color: var(--text-3);
 }
+.also b { color: var(--text-2); font-weight: 600; }
 
 .card.rescue { margin-bottom: .7rem; }
 .rescue-tag {
@@ -785,6 +785,14 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     addIf(card, progressRow(c));
     addIf(card, blockerBlock(c));
     addIf(card, heroFacts(c));
+    if (c.also) {
+      // A deadline that stopped leading must not vanish; failing that, the
+      // runner-up, so the panel always names what it is not showing.
+      var also = el("div", "also");
+      also.appendChild(el("b", null, c.also_label));
+      also.appendChild(el("span", null, c.also));
+      card.appendChild(also);
+    }
     addIf(card, c.note ? el("div", "note", c.note) : null);
     addIf(card, detailBlock(c));
     card.appendChild(weekStrip(cards));

@@ -26,6 +26,7 @@ def classify(blocker: str, phase: str, age: int | None, stale_days: int) -> str:
 
 
 URGENT_DAYS = 30
+FINAL_WEEK = 7
 STALL_FLOOR = 3
 BLOCKED_DEBT = 1.5
 OVERDUE_DEBT = 2.0
@@ -81,10 +82,37 @@ def debt_reason(
     return f"quiet {span}" if span else ""
 
 
-def order_key(card: dict) -> tuple:
-    """Deadline tier first, then momentum descending, then stakes."""
+def at_risk(card: dict) -> bool:
+    """Whether a dated project needs the top of the board.
+
+    Having a date is not the same as needing attention. A project that is
+    holding its pace with three comfortable weeks left does not deserve the
+    board's best position — it deserves one calm line. It takes the top back
+    the moment it is overdue, decelerating, or inside its final week.
+    """
     dtt = card.get("days_to_target")
-    urgent = dtt is not None and dtt <= URGENT_DAYS
+    if dtt is None or dtt > URGENT_DAYS:
+        return False
+    if dtt < 0 or dtt <= FINAL_WEEK:
+        return True
+    # Only a project we can positively see holding its pace gets demoted.
+    # Anything we cannot read stays at risk: a deadline is not reassuring just
+    # because the activity call failed, and the pace arrow is deliberately
+    # silent below ten commits a month — which is exactly where a dormant
+    # project with a date approaching would hide.
+    if not isinstance(card.get("commits_7d"), int):
+        return True
+    if not isinstance(card.get("commits_30d"), int):
+        return True
+    if not card.get("commits_30d"):
+        return True
+    return pace(card) == "down"
+
+
+def order_key(card: dict) -> tuple:
+    """At-risk deadlines first, then momentum descending, then stakes."""
+    dtt = card.get("days_to_target")
+    urgent = at_risk(card)
     mom = card.get("momentum")
     return (
         0 if urgent else 1,
@@ -205,32 +233,55 @@ def _activity_clause(card: dict) -> str:
     return f"quiet for {span}"
 
 
-def order_reason(card: dict) -> tuple[str, str]:
-    """(sentence for the expanded card, badge for the hero)."""
+def deadline_phrase(card: dict) -> str:
+    """The date in words. Empty when there is no date worth stating."""
     dtt = card.get("days_to_target")
-    clause = _activity_clause(card)
+    if dtt is None or dtt > URGENT_DAYS:
+        return ""
+    if dtt < 0:
+        return f"{-dtt} days overdue"
+    if dtt == 0:
+        return "ships today"
+    return f"ships in {dtt} days"
 
-    if dtt is not None and dtt <= URGENT_DAYS:
-        if dtt < 0:
-            lead, badge = f"{-dtt} days overdue", f"{-dtt}d OVERDUE"
-        elif dtt == 0:
-            lead, badge = "ships today", "SHIPS today"
-        else:
-            lead, badge = f"ships in {dtt} days", f"SHIPS {dtt}d"
-        # The deadline leads because it is why the card ranks first; the
-        # momentum clause gives the pace arrow its numbers.
-        return (f"{lead} · {clause}" if clause else lead), badge
+
+def order_reason(card: dict) -> str:
+    """Why this card sits where it does, as a sentence."""
+    clause = _activity_clause(card)
+    dated = deadline_phrase(card)
+
+    if at_risk(card):
+        # The deadline leads because it is why the card is first; the momentum
+        # clause gives the pace arrow its numbers.
+        return f"{dated} \u00b7 {clause}" if clause else dated
 
     if not clause:
-        return "activity unknown", "\u2014"
+        return "activity unknown"
+    # Not at risk: momentum leads and the date is reported without shouting.
+    return f"{clause} \u00b7 {dated}" if dated else clause
 
-    c7 = card.get("commits_7d") or 0
-    c30 = card.get("commits_30d") or 0
-    if c7:
-        return clause, f"{c7}/wk"
-    if c30:
-        return clause, f"{c30}/mo"
-    return clause, "quiet"
+
+def also_line(ordered: list[dict]) -> tuple[str, str]:
+    """(label, text) for the one thing the top card is not showing you.
+
+    A deadline that is no longer leading must never vanish — losing sight of a
+    date because it is on track is how it stops being on track. Failing that,
+    the runner-up, so the board always names where the energy actually is.
+    """
+    if len(ordered) < 2:
+        return "", ""
+    for card in ordered[1:]:
+        dated = deadline_phrase(card)
+        if dated:
+            left = (card.get("steps_total") or 0) - (card.get("steps_done") or 0)
+            tail = f", {left} steps left" if left > 0 else ""
+            return "On track", f"{card.get('project') or card.get('repo')} {dated}{tail}"
+    for card in ordered[1:]:
+        if card.get("momentum"):
+            rate = card.get("commits_7d")
+            note = f" \u00b7 {rate}/wk" if isinstance(rate, int) and rate else ""
+            return "Also", f"{card.get('project') or card.get('repo')}{note}"
+    return "", ""
 
 
 def why_line(card: dict) -> str:

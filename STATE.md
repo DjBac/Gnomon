@@ -17,6 +17,7 @@ steps:
   - "[x] Freshness ignores status-only commits"
   - "[x] Rescue keys on stalled work, not on age"
   - "[x] One now panel replaces the summary and the hero"
+  - "[x] A deadline leads only when it is at risk"
 ---
 
 # Gnomon

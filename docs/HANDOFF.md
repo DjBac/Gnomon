@@ -1,7 +1,7 @@
 # HANDOFF — read me first
 
 Written 2026-08-22, end of the session that shipped 0.4.0 and 0.5.0.
-Current release: **0.5.5**, on `main` and pushed.
+Current release: **0.5.6**, on `main` and pushed.
 
 ## What Gnomon is
 
@@ -21,11 +21,11 @@ stored by hand.
 | File | Lines | Responsibility | Imports |
 |---|---|---|---|
 | `gnomon/state.py` | 169 | Parse `STATE.md` — front-matter, steps, dates, normalisation, vanished-field diffing | `yaml`, stdlib |
-| `gnomon/ranking.py` | 357 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
+| `gnomon/ranking.py` | 408 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
 | `gnomon/github.py` | 87 | The four API calls and their error notes | `aiohttp` |
-| `gnomon/app.py` | 338 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
-| `gnomon/selftest.py` | 933 | The entire test suite | `state` + `ranking` only |
-| `gnomon/www/index.html` | 921 | The whole panel — tokens, layout, render | none |
+| `gnomon/app.py` | 341 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
+| `gnomon/selftest.py` | 1037 | The entire test suite | `state` + `ranking` only |
+| `gnomon/www/index.html` | 929 | The whole panel — tokens, layout, render | none |
 
 **`state.py` and `ranking.py` must never import `aiohttp`.** That is what lets
 `python3 gnomon/selftest.py` run outside the container. A test in `selftest.py`
@@ -34,7 +34,7 @@ enforces it — keep it passing.
 ## How to test
 
 ```bash
-python3 gnomon/selftest.py          # 151 assertions, must exit 0
+python3 gnomon/selftest.py          # 171 assertions, must exit 0
 ```
 
 `aiohttp` is NOT installed on Anthony's Mac, so `app.py` and `github.py` cannot
@@ -56,8 +56,17 @@ arithmetic, and the DOM stub. Anthony is the only one who can look at it.
 
 ### Ordering — two tiers
 
-1. **Deadline.** Any card with a `target` within 30 days, or overdue, comes
-   first — soonest first.
+1. **Deadline, but only when at risk.** Having a date is not the same as
+   needing the top of the board. `ranking.at_risk` puts a dated card first when
+   it is overdue, inside its final 7 days, dormant, or visibly decelerating.
+   Soonest first within the tier.
+
+   **Only a project we can positively see holding its pace is demoted.**
+   Unreadable activity, zero commits in the window, and a silent pace arrow all
+   count as at risk — the arrow is deliberately mute below ten commits a month,
+   which is exactly where a dormant project with a date approaching would hide.
+   A dated card that yields the top slot is never lost: `ranking.also_line`
+   names it under the now panel as `On track · X ships in N days`.
 2. **Momentum.** Everything else, descending:
    `momentum = (commits in 7d x 3) + commits in 30d`
 
@@ -133,7 +142,9 @@ The now panel replaced the separate summary panel and hero card in 0.5.5. It
 leads with the instruction — `Work on this now`, then the `[>]` step as the
 largest text on screen — then the project and `ranking.hero_verdict` in words,
 then progress, then three facts: days until it ships, steps left, and the rate
-*with last week's rate beside it* (`2/wk ↓ · was 6/wk`). The week is demoted to
+*with last week's rate beside it* (`2/wk ↓ · was 6/wk`). Then one "also" line
+naming what the panel is *not* showing — a dated project that is on track, or
+failing that the runner-up, so the board never hides where the energy is. The week is demoted to
 a strip at the foot: total commits, then triage chips counting what is shipping
 soon, stalled, and asleep. A chip with a count of zero is not drawn.
 
@@ -143,6 +154,9 @@ the screen. **The completion ring and the stakes split were removed with it** �
 `completionRing`, `stakesBar`, `summaryLine`, `idleCount` and `svgEl` are all
 deleted. The `#summary` host div stays, display-none, so the load path is
 unchanged. Restoring any of it is one `git revert` away.
+
+`order_reason` returns a string, not a tuple: `order_badge` was orphaned when
+the panels merged and is gone, along with the `.badge` CSS.
 
 `ranking.pace` was added so the verdict cannot disagree with the arrow drawn
 beside it — a test asserts they move together. `commits_prev7` comes from the
