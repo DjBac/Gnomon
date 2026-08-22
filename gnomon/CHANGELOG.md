@@ -1,5 +1,23 @@
 # Changelog
 
+## 0.5.0
+
+The top of the board becomes a dashboard, and the panel gains a day theme.
+
+- The four stat tiles are replaced by a summary panel: a completion ring, the
+  week's commit total, and a stakes split showing where the effort went
+- Every project row now carries an activity bar and a pace arrow, so the shape
+  of the week is visible without opening anything
+- Pace compares this week against the month's weekly average, and stays silent
+  below ten commits in thirty days where the ratio would be noise
+- The hero's meta row gains the same arrow, so a decelerating deadline reads at
+  a glance
+- Adopted the Argus design tokens: its type scale, radii, status hues and ring
+  geometry, with tabular numerals replacing the monospace font
+- Two palettes — Halo at night, Daylight by day — switched automatically by the
+  device's light or dark setting. No toggle and nothing stored
+- No backend change, no new API calls, and no STATE.md needs editing
+
 ## 0.4.0
 
 The board is ordered by what you are actually working on.

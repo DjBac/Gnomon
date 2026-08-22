@@ -206,6 +206,54 @@ instead. And `pulse`, `ha-doukas-bus` and `pilates` all tie on momentum (4):
 `ha-doukas-bus` and `pilates` tie on `stakes` too, the repo name is what
 finally separates them.
 
+## The dashboard
+
+Above the board sits a summary panel — a ring, a total and a split — giving
+the whole portfolio's shape before you scroll to a single card. The four stat
+tiles it replaces are gone.
+
+### The ring
+
+The ring is steps done over steps total, summed across every tracked
+project rather than any one repo's roadmap. It renders only when at least one
+card has steps to count; a portfolio with no `steps` anywhere shows no ring.
+
+### The stakes split
+
+Alongside the ring, the week's total commit count, and a segmented bar
+showing that total's split across `revenue`, `product` and `personal` — the
+same three `stakes` values used for tiebreaking on the board itself. It is a
+share of *this week's* commits, not a lifetime figure, and it renders only
+once at least one repo has reported one.
+
+### Pace
+
+Every row — the hero included — can carry a pace arrow:
+
+```
+pace = commits_7d / (commits_30d / 4.3)
+```
+
+`4.3` is the number of weeks in a 30-day window, so the denominator is the
+month's weekly average. `↑` appears at a ratio of `1.25` or more, `↓` at
+`0.6` or less; between those, or when the month's commit count is unknown,
+there is no arrow at all.
+
+Pace goes silent below ten commits in thirty days. Below that floor a single
+commit already reads as a 4.3x surge, and a fabricated arrow is worse than a
+missing one.
+
+Momentum and pace both come from the same commits call, made against the
+repository's **default branch only** — work sitting on an unmerged feature
+branch raises neither, even though it may already show up elsewhere as fresh
+activity.
+
+### Day and night
+
+The panel follows the device's light or dark setting via
+`prefers-color-scheme` — Halo at night, Daylight by day. There is no toggle
+and no config option; nothing about the choice is stored.
+
 ## Configuration
 
 | Option | Type | Default | Notes |

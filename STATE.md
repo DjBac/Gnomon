@@ -11,7 +11,8 @@ steps:
   - "[x] Get the add-on running in Home Assistant"
   - "[x] Backfill STATE.md headers across remaining repos"
   - "[x] Panel redesign for the six-field card"
-  - "[>] Momentum board with hero and rescue"
+  - "[x] Momentum board with hero and rescue"
+  - "[>] Activity dashboard with day and night themes"
 ---
 
 # Gnomon
