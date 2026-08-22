@@ -308,16 +308,28 @@ it never displayed. **A fact is stated once** — `why_line` suppresses a
 
 ## 14 · Appendix: one rendering gotcha that transfers
 
-From Gnomon's panel constraints, and it applies directly to Argus's `Ring` and
-`Sparkline`:
+From Gnomon's panel constraints, and it applies to Argus's `Ring` and
+`Sparkline`. **The rule as originally written here was overstated** — Argus's
+session tested it and found `var()` *does* resolve in presentation attributes in
+Chromium 148, which is consistent with SVG2 parsing them as CSS property values.
+The corrected rule:
 
-> `var()` does not resolve inside SVG **presentation attributes**.
-> `stroke="var(--ok)"` renders an invisible ring **with no error**.
-> Ring strokes must be set by CSS class.
+> **Colour SVG through a CSS class, not a presentation attribute** — because
+> `var()` in a presentation attribute is not reliable across engines, and the
+> failure mode is **silent**. Nothing errors, nothing warns; the ring simply is
+> not there.
 
-It cost a release to find, because nothing warns — the ring simply is not there.
-Argus's `Ring` already builds its circles with `setAttribute`, so anything the
-Projects view adds to an SVG must colour through a class, never an attribute.
+The reason is the durable part. WebKit lacked this support for a long time, and
+WebKit is the engine that matters here: Anthony runs Argus as a PWA on an
+iPhone. Neither session can test Safari, so the qualification stands until
+someone opens the page on the phone.
+
+**An honesty note, because it bears on how much to trust the rest of this
+document.** I never tested this. It was inherited from `docs/HANDOFF.md`, written
+in an earlier session, and I restated it as a fact. Argus's session tested it in
+minutes. A rule stated with its reason survives a counterexample; a rule stated
+as a fact gets discarded along with everything near it when someone falsifies
+it. Prefer the former when reading anything else here.
 
 The other panel constraints (no `innerHTML`, relative fetch paths, no
 `localStorage`) were Home Assistant ingress concerns and die with the add-on.

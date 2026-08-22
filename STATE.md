@@ -1,6 +1,6 @@
 ---
 project: Gnomon
-phase: usable
+phase: parked
 stakes: personal
 target: ""
 blocker: ""
@@ -20,6 +20,7 @@ steps:
   - "[x] A deadline leads only when it is at risk"
   - "[x] Four-week activity panel that reads itself"
   - "[x] Theme switch and version footprint"
+  - "[x] Absorbed into Argus; this repository is closed"
 ---
 
 # Gnomon
@@ -42,21 +43,16 @@ from the `gnomon` repository.
 
 ## Open
 
-Read `docs/HANDOFF.md` first. Parked technical findings are in
-`docs/known-issues.md`.
+**Nothing. This repository is decommissioned.** Argus absorbs Gnomon entirely —
+the board becomes a Projects view there, fed by a collector. Everything needed
+to continue the work is under `~/Code/argus/docs/gnomon/`, including the four
+Python modules and eight releases of reasoning.
 
-**Shipped in 0.5.2.** The hero now carries its momentum arithmetic:
-`order_reason`'s deadline branch appends the momentum clause, so
-`ships in 11 days · momentum 31 - 2 this week, 25 this month · quiet 5 days`.
-Unknown momentum adds no clause; a genuine zero reads `quiet for N days`. A new
-`ranking.why_line` stops the footer stating overdue or quiet twice. The panel
-reads one composed `why` field instead of joining two. Suite is 103 assertions.
-
-**Open question — surfacing neglect.** The board is ordered by momentum, so the
-projects Anthony has not touched sink to the bottom, which is the opposite of
-what he wants to see. `debt` already measures this and the `rescue` role exists
-to surface it, but its floor (rank 5 or lower, debt >= 1.0) means it has never
-fired. Design not settled.
+Open threads moved with it: the `--unknown-c` routing, the sub-AA text tiers,
+and the carried defects are all in `KNOWN-ISSUES.md` there. Two configuration
+limits survive the move and are stated in the brief — `Oikovis/pulse` is
+unreachable because fine-grained PATs are single-owner, and `portolan` is local
+only.
 
 - `Oikovis/pulse` is unreachable. Fine-grained PATs are scoped to a single
   resource owner, so a `DjBac` token cannot read it even though it is public,
