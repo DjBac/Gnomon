@@ -45,6 +45,9 @@
   --crit: #e5484d;
   --run: #4c8dff;
   --stale-c: #6d7684;
+  --unknown-c: rgba(109, 118, 132, .45);
+
+  --dim-state: .55;
 }
 
 /* ---------- DAY · Daylight ---------- */
@@ -68,6 +71,9 @@
     --crit: #b42328;
     --run: #1668e3;
     --stale-c: #7a8290;
+    --unknown-c: rgba(122, 130, 144, .45);
+
+    --dim-state: .82;
   }
 }
 
@@ -212,7 +218,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
   opacity: .85;
 }
 
-.card[data-state="stale"], .card[data-state="parked"] { opacity: .55; }
+.card[data-state="stale"], .card[data-state="parked"] { opacity: var(--dim-state); }
 .card[data-state="stale"]:hover, .card[data-state="parked"]:hover { opacity: .8; }
 
 @keyframes rise {
@@ -222,7 +228,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 .card[data-state="stale"], .card[data-state="parked"] { animation-name: rise-dim; }
 @keyframes rise-dim {
   from { opacity: 0; transform: translateY(6px); }
-  to   { opacity: .55; transform: none; }
+  to   { opacity: var(--dim-state); transform: none; }
 }
 
 .card.hero { padding: 1.1rem 1rem 1rem; margin-bottom: .6rem; }
@@ -268,7 +274,6 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 
 .card.tail { padding: .7rem .9rem .6rem; margin-bottom: .35rem; }
 .card.tail .project { font-size: .875rem; font-weight: 500; }
-.card.tail .age { margin-left: auto; }
 .card.tail .count { margin-left: .4rem; }
 .card.tail .segs { margin-top: .45rem; }
 
@@ -315,7 +320,6 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 }
 .actbar i { display: block; height: 100%; border-radius: var(--r-bar); background: var(--accent); }
 
-.card.tail .row1 { gap: .5rem; }
 .card.tail .actbar { margin: 0 .1rem; }
 
 /* ---------- progress ---------- */
@@ -475,7 +479,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     aging:   "var(--warn)",
     fresh:   "var(--ok)",
     parked:  "var(--run)",
-    unknown: "var(--text-3)"
+    unknown: "var(--unknown-c)"
   };
 
   var board   = document.getElementById("board");
@@ -835,6 +839,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
         }
       })
       .catch(function (err) {
+        renderSummary([]);
         board.textContent = "";
         var msg = document.createElement("div");
         msg.className = "error";
