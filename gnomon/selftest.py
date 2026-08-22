@@ -699,6 +699,90 @@ def selftest_previous_week() -> int:
     return 1 if failures else 0
 
 
+def selftest_week_buckets() -> int:
+    """Four whole weeks, no commit counted twice and none lost."""
+    failures = 0
+    import datetime as _dt
+    edges = ranking.week_edges(_dt.datetime(2026, 8, 22, 12, 0, 0))
+    ok = edges == ["2026-07-25", "2026-08-01", "2026-08-08", "2026-08-15"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  weeks: edges are four Saturdays {edges}")
+
+    payload = ([_commit(f"a{i}", "2026-08-20") for i in range(3)]
+               + [_commit(f"b{i}", "2026-08-12") for i in range(5)]
+               + [_commit(f"c{i}", "2026-08-05") for i in range(2)]
+               + [_commit(f"d{i}", "2026-07-29") for i in range(4)]
+               + [_commit("old", "2026-07-01")])
+    got = ranking.week_buckets(payload, edges)
+    ok = got == [4, 2, 5, 3]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  weeks: buckets oldest first    {got}")
+
+    # Everything inside 28 days is counted exactly once; older is dropped.
+    ok = sum(got) == len(payload) - 1
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  weeks: nothing double-counted  {sum(got)}")
+
+    # The newest bucket must include today, not fall off the open end.
+    ok = ranking.week_buckets([_commit("t", "2026-08-22")], edges) == [0, 0, 0, 1]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  weeks: today lands in this wk  "
+          f"{ranking.week_buckets([_commit('t', '2026-08-22')], edges)}")
+
+    ok = ranking.week_buckets([], edges) == [0, 0, 0, 0]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  weeks: empty payload is zeros  ")
+
+    # Board totals sum every reporting repo and ignore the silent ones.
+    cards = [_card("a", weeks=[1, 2, 3, 4]), _card("b", weeks=[10, 0, 0, 1]),
+             _card("dark")]
+    got = ranking.board_weeks(cards)
+    ok = got == [11, 2, 3, 5]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  weeks: board totals            {got}")
+
+    ok = ranking.board_weeks([_card("dark"), _card("dark2")]) == []
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  weeks: nothing reporting, empty")
+    return 1 if failures else 0
+
+
+def selftest_activity_readout() -> int:
+    """The reading must be earned; a flat month is not a ranking."""
+    failures = 0
+    cases = [
+        ("quietest", [214, 168, 190, 163], ("Your quietest week in four", 184)),
+        ("busiest", [214, 168, 190, 231], ("Your busiest week in four", 201)),
+        # Four near-identical weeks: calling one of them the quietest is true
+        # and misleading at once.
+        ("flat month", [180, 182, 179, 181], ("Holding steady", 180)),
+        ("below average", [100, 50, 60, 70], ("Below your four-week average", 70)),
+        # 210/4 is 52.5; Python rounds half to even, so 52.
+        ("above average", [100, 20, 30, 60], ("Above your four-week average", 52)),
+        ("no activity at all", [0, 0, 0, 0], ("", 0)),
+        ("nothing reporting", [], ("", 0)),
+    ]
+    for label, weeks, want in cases:
+        got = ranking.activity_readout(weeks)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  readout: {label:20} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+
+    # The sentence must never contradict the bars it sits above.
+    for weeks in ([214, 168, 190, 163], [214, 168, 190, 231], [5, 5, 5, 400]):
+        sentence, _ = ranking.activity_readout(weeks)
+        if "busiest" in sentence:
+            ok = weeks[-1] == max(weeks)
+        elif "quietest" in sentence:
+            ok = weeks[-1] == min(weeks)
+        else:
+            ok = True
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  readout: agrees with bars {weeks} -> {sentence!r}")
+    return 1 if failures else 0
+
+
 def selftest_hero_verdict() -> int:
     """The verdict must agree with the arrow rendered beside it."""
     failures = 0
@@ -1022,6 +1106,8 @@ def main() -> int:
     failures += selftest_golden_order()
     failures += selftest_debt_never_orders()
     failures += selftest_previous_week()
+    failures += selftest_week_buckets()
+    failures += selftest_activity_readout()
     failures += selftest_hero_verdict()
     failures += selftest_stall()
     failures += selftest_rescue_selection()

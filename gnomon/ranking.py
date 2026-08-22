@@ -8,6 +8,8 @@ FRESH_MAX = 6
 MOMENTUM_RECENT_DAYS = 7
 MOMENTUM_PREVIOUS_DAYS = 14
 MOMENTUM_WINDOW_DAYS = 30
+WEEK_BUCKETS = 4
+STEADY_BAND = 0.15
 RECENT_WEIGHT = 3
 
 
@@ -311,6 +313,69 @@ def commit_cutoffs(now: datetime.datetime) -> tuple[str, str, str]:
     cut7 = (now - datetime.timedelta(days=MOMENTUM_RECENT_DAYS)).date().isoformat()
     cut14 = (now - datetime.timedelta(days=MOMENTUM_PREVIOUS_DAYS)).date().isoformat()
     return since, cut7, cut14
+
+
+def week_edges(now: datetime.datetime) -> list[str]:
+    """The four 7-day bucket starts, oldest first.
+
+    Four whole weeks is 28 days, which sits inside the 30-day commit window —
+    so every bar is a full week and the oldest two days are simply unused.
+    """
+    return [
+        (now - datetime.timedelta(days=7 * (WEEK_BUCKETS - i))).date().isoformat()
+        for i in range(WEEK_BUCKETS)
+    ]
+
+
+def week_buckets(payload: list, edges: list[str]) -> list[int]:
+    """Commits per 7-day bucket, oldest first."""
+    weeks = [0] * len(edges)
+    for commit in payload:
+        day = _commit_day(commit)
+        if not day or day < edges[0]:
+            continue
+        for i in range(len(edges) - 1, -1, -1):
+            if day >= edges[i]:
+                weeks[i] += 1
+                break
+    return weeks
+
+
+def board_weeks(cards: list[dict]) -> list[int]:
+    """Every repo's buckets summed. Empty when nothing reported."""
+    total = [0] * WEEK_BUCKETS
+    seen = False
+    for card in cards:
+        weeks = card.get("weeks")
+        if not isinstance(weeks, list) or len(weeks) != WEEK_BUCKETS:
+            continue
+        seen = True
+        for i, n in enumerate(weeks):
+            total[i] += n
+    return total if seen else []
+
+
+def activity_readout(weeks: list[int]) -> tuple[str, int]:
+    """(the reading of four weeks, their average). Empty when there is none.
+
+    Words first, arithmetic second — the same order that makes the hero
+    readable. A flat four weeks gets "holding steady" rather than a ranking,
+    because calling one of four near-identical weeks the quietest is true and
+    misleading at once.
+    """
+    if len(weeks) != WEEK_BUCKETS or not sum(weeks):
+        return "", 0
+    average = round(sum(weeks) / len(weeks))
+    current, low, high = weeks[-1], min(weeks), max(weeks)
+    if average and (high - low) / average < STEADY_BAND:
+        return "Holding steady", average
+    if current == high:
+        return "Your busiest week in four", average
+    if current == low:
+        return "Your quietest week in four", average
+    if current > average:
+        return "Above your four-week average", average
+    return "Below your four-week average", average
 
 
 def _commit_day(commit) -> str:

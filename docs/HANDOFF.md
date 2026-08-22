@@ -1,7 +1,7 @@
 # HANDOFF — read me first
 
 Written 2026-08-22, end of the session that shipped 0.4.0 and 0.5.0.
-Current release: **0.5.6**, on `main` and pushed.
+Current release: **0.5.7**, on `main` and pushed.
 
 ## What Gnomon is
 
@@ -21,11 +21,11 @@ stored by hand.
 | File | Lines | Responsibility | Imports |
 |---|---|---|---|
 | `gnomon/state.py` | 169 | Parse `STATE.md` — front-matter, steps, dates, normalisation, vanished-field diffing | `yaml`, stdlib |
-| `gnomon/ranking.py` | 408 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
+| `gnomon/ranking.py` | 473 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
 | `gnomon/github.py` | 87 | The four API calls and their error notes | `aiohttp` |
-| `gnomon/app.py` | 341 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
-| `gnomon/selftest.py` | 1037 | The entire test suite | `state` + `ranking` only |
-| `gnomon/www/index.html` | 929 | The whole panel — tokens, layout, render | none |
+| `gnomon/app.py` | 351 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
+| `gnomon/selftest.py` | 1123 | The entire test suite | `state` + `ranking` only |
+| `gnomon/www/index.html` | 1161 | The whole panel — tokens, layout, render | none |
 
 **`state.py` and `ranking.py` must never import `aiohttp`.** That is what lets
 `python3 gnomon/selftest.py` run outside the container. A test in `selftest.py`
@@ -34,7 +34,7 @@ enforces it — keep it passing.
 ## How to test
 
 ```bash
-python3 gnomon/selftest.py          # 171 assertions, must exit 0
+python3 gnomon/selftest.py          # 188 assertions, must exit 0
 ```
 
 `aiohttp` is NOT installed on Anthony's Mac, so `app.py` and `github.py` cannot
@@ -150,10 +150,31 @@ soon, stalled, and asleep. A chip with a count of zero is not drawn.
 
 The reasoning: every number in the old summary panel was true and none of them
 changed what you do next. It was a scoreboard in the most valuable position on
-the screen. **The completion ring and the stakes split were removed with it** —
-`completionRing`, `stakesBar`, `summaryLine`, `idleCount` and `svgEl` are all
-deleted. The `#summary` host div stays, display-none, so the load path is
-unchanged. Restoring any of it is one `git revert` away.
+the screen. The `#summary` host div stays, display-none, so the load path is
+unchanged.
+
+**Then the stats panel**, added in 0.5.7 and sitting between the now panel and
+the rescue slot. It leads with the reading and shows the arithmetic under it:
+
+```
+ACTIVITY
+Your quietest week in four · 163 commits
+214   168   190   163
+4 wks ago  3 wks  last wk  this wk
+Four-week average 184
+```
+
+Four 7-day buckets from the commit payload already fetched — 28 days inside a
+30-day window, so every bar is a full week and the oldest two days go unused.
+No extra API call. `ranking.activity_readout` ranks the current week against
+the other three, and a spread under 15% of the average returns **"Holding
+steady"** rather than a ranking: calling one of four near-identical weeks the
+quietest is true and misleading at once.
+
+The completion ring and stakes split came back with it — the ring now carries
+`role="img"`, and the stakes key gained colour swatches, so two entries from
+`known-issues.md` are closed. Nothing repeats: the sentence gives the meaning,
+the bars give the counts, the average gives the baseline.
 
 `order_reason` returns a string, not a tuple: `order_badge` was orphaned when
 the panels merged and is gone, along with the `.badge` CSS.

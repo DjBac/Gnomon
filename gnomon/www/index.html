@@ -203,6 +203,110 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 }
 .card.hero .prog { margin: .5rem 0 .7rem; }
 
+/* ---------- stats panel ---------- */
+
+.card.stats { padding: 1rem; margin-bottom: .6rem; border-radius: var(--r-xl); }
+.card.stats::before { display: none; }
+
+.eyebrow {
+  font-size: var(--fs-micro);
+  font-weight: 600;
+  letter-spacing: var(--track-caps);
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+
+.readout {
+  font-size: var(--fs-emph);
+  font-weight: 650;
+  letter-spacing: var(--track-tight);
+  line-height: 1.3;
+  margin-top: .15rem;
+}
+.readout .n { color: var(--crit); }
+.readout.good .n { color: var(--ok); }
+
+.chart { display: flex; gap: 6px; align-items: flex-end; height: 58px; margin-top: .9rem; }
+.ccol {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  height: 100%;
+  gap: .3rem;
+}
+.ccol .v {
+  font-size: var(--fs-note);
+  font-weight: 600;
+  color: var(--text-3);
+  text-align: center;
+  line-height: 1;
+}
+.ccol.now .v { color: var(--crit); font-weight: 700; }
+.ccol.now.good .v { color: var(--ok); }
+.ccol .bar { border-radius: 3px; background: var(--track); }
+.ccol.past .bar { background: var(--stale-c); opacity: .5; }
+.ccol.now .bar { background: var(--crit); }
+.ccol.now.good .bar { background: var(--ok); }
+
+.clabels { display: flex; gap: 6px; margin-top: .4rem; }
+.clabels span {
+  flex: 1;
+  text-align: center;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--text-3);
+}
+.clabels span.now { color: var(--text-2); font-weight: 600; }
+
+.avg { margin-top: .55rem; font-size: var(--fs-caption); color: var(--text-2); }
+
+.stakes {
+  display: flex;
+  height: 5px;
+  border-radius: var(--r-bar);
+  overflow: hidden;
+  background: var(--track);
+  margin: .85rem 0 .4rem;
+}
+.stakes i { display: block; }
+.stakekey {
+  display: flex;
+  gap: .7rem;
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--text-3);
+}
+.stakekey .sw {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  border-radius: 2px;
+  margin-right: .28rem;
+}
+
+.ring { flex: none; }
+.ring-track { stroke: var(--track); }
+.ring-fill { stroke: var(--ok); }
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: .7rem;
+  margin-top: .85rem;
+  padding-top: .75rem;
+  border-top: 1px solid var(--border);
+}
+.foot .t { font-size: var(--fs-small); font-weight: 600; }
+.foot .l {
+  font-size: var(--fs-micro);
+  text-transform: uppercase;
+  letter-spacing: var(--track-caps);
+  color: var(--text-3);
+}
+
 /* ---------- now panel ---------- */
 
 .card.now { padding: 1.1rem 1rem .9rem; margin-bottom: .6rem; border-radius: var(--r-xl); }
@@ -686,6 +790,133 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     }, 0);
   }
 
+  var SVG_NS = "http://www.w3.org/2000/svg";
+  var RING_C = 251.3;
+  var STAKES_ORDER = ["revenue", "product", "personal"];
+
+  function svgEl(tag, attrs) {
+    var node = document.createElementNS(SVG_NS, tag);
+    Object.keys(attrs).forEach(function (k) { node.setAttribute(k, attrs[k]); });
+    return node;
+  }
+
+  // Argus ring geometry: viewBox 92, r=40, stroke=8, circumference 251.3,
+  // rotated -90 so it starts at twelve o'clock. role="img" is required or
+  // several screen readers ignore the label entirely.
+  function completionRing(done, total) {
+    if (!total) return null;
+    var pct = Math.round(100 * done / total);
+    var offset = Math.round(RING_C * (1 - done / total) * 100) / 100;
+    var svg = svgEl("svg", {
+      "class": "ring", role: "img", width: "44", height: "44", viewBox: "0 0 92 92",
+      "aria-label": pct + " percent complete"
+    });
+    svg.appendChild(svgEl("circle", {
+      "class": "ring-track", cx: "46", cy: "46", r: "40",
+      fill: "none", "stroke-width": "8"
+    }));
+    svg.appendChild(svgEl("circle", {
+      "class": "ring-fill", cx: "46", cy: "46", r: "40",
+      fill: "none", "stroke-width": "8", "stroke-linecap": "round",
+      "stroke-dasharray": String(RING_C),
+      "stroke-dashoffset": String(offset),
+      transform: "rotate(-90 46 46)"
+    }));
+    return svg;
+  }
+
+  function stakesBar(cards) {
+    var by = { revenue: 0, product: 0, personal: 0 };
+    var total = 0;
+    cards.forEach(function (c) {
+      if (typeof c.commits_7d !== "number") return;
+      var key = by.hasOwnProperty(c.stakes) ? c.stakes : "personal";
+      by[key] += c.commits_7d;
+      total += c.commits_7d;
+    });
+    if (!total) return null;
+    var wrap = el("div");
+    var bar = el("div", "stakes");
+    var key = el("div", "stakekey");
+    var tone = { revenue: "var(--ok)", product: "var(--run)", personal: "var(--stale-c)" };
+    STAKES_ORDER.forEach(function (k) {
+      var pct = Math.round(100 * by[k] / total);
+      var seg = el("i");
+      seg.style.setProperty("width", pct + "%");
+      seg.style.setProperty("background", tone[k]);
+      bar.appendChild(seg);
+      // The swatch is what links "28% product" to the blue segment. Built by
+      // appending in order — setting textContent first would put the text
+      // ahead of the swatch.
+      var item = el("span");
+      var dot = el("i", "sw");
+      dot.style.setProperty("background", tone[k]);
+      item.appendChild(dot);
+      item.appendChild(el("span", null, pct + "% " + k));
+      key.appendChild(item);
+    });
+    wrap.appendChild(bar);
+    wrap.appendChild(key);
+    return wrap;
+  }
+
+  var WEEK_LABELS = ["4 wks ago", "3 wks", "last wk", "this wk"];
+
+  function weekChart(weeks) {
+    var top = Math.max.apply(null, weeks) || 1;
+    var rising = weeks[weeks.length - 1] >= top;
+    var chart = el("div", "chart");
+    var labels = el("div", "clabels");
+    weeks.forEach(function (n, i) {
+      var last = i === weeks.length - 1;
+      var col = el("div", "ccol " + (last ? (rising ? "now good" : "now") : "past"));
+      col.appendChild(el("div", "v", String(n)));
+      var bar = el("div", "bar");
+      bar.style.setProperty("height", Math.max(6, Math.round(46 * n / top)) + "px");
+      col.appendChild(bar);
+      chart.appendChild(col);
+      labels.appendChild(el("span", last ? "now" : null, WEEK_LABELS[i] || ""));
+    });
+    var wrap = el("div");
+    wrap.appendChild(chart);
+    wrap.appendChild(labels);
+    return wrap;
+  }
+
+  function statsPanel(data, cards) {
+    var weeks = data.weeks;
+    if (!weeks || !weeks.length) return null;
+    var panel = el("div", "card stats");
+    panel.appendChild(el("div", "eyebrow", "Activity"));
+    if (data.activity) {
+      // Words first, arithmetic second. The chart carries every count, so the
+      // sentence must not repeat one.
+      var rising = weeks[weeks.length - 1] >= Math.max.apply(null, weeks);
+      var readout = el("div", "readout" + (rising ? " good" : ""));
+      readout.appendChild(el("span", null, data.activity));
+      readout.appendChild(el("span", "n", " \u00b7 " + weeks[weeks.length - 1] + " commits"));
+      panel.appendChild(readout);
+    }
+    panel.appendChild(weekChart(weeks));
+    if (data.week_average) {
+      panel.appendChild(el("div", "avg", "Four-week average " + data.week_average));
+    }
+    addIf(panel, stakesBar(cards));
+    var done = 0, total = 0;
+    cards.forEach(function (c) { done += c.steps_done || 0; total += c.steps_total || 0; });
+    var ring = completionRing(done, total);
+    if (ring) {
+      var foot = el("div", "foot");
+      foot.appendChild(ring);
+      var text = el("div");
+      text.appendChild(el("div", "t", done + " of " + total + " steps"));
+      text.appendChild(el("div", "l", "across " + cards.length + " projects"));
+      foot.appendChild(text);
+      panel.appendChild(foot);
+    }
+    return panel;
+  }
+
   function factCell(value, label, tone) {
     var cell = el("div", "fact");
     cell.appendChild(el("b", tone ? tone : null, value));
@@ -833,7 +1064,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
     return card;
   }
 
-  function render(cards) {
+  function render(cards, data) {
     board.textContent = "";
     if (!cards.length) {
       board.appendChild(el("div", "empty-state", "No projects tracked yet."));
@@ -854,6 +1085,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
       bare.appendChild(weekStrip(cards));
       board.appendChild(bare);
     }
+    addIf(board, statsPanel(data || {}, cards));
     rescue.forEach(function (c) { board.appendChild(rescueCard(c)); });
     tail.forEach(function (c) { board.appendChild(tailRow(c, max)); });
   }
@@ -884,7 +1116,7 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
       .then(function (data) {
         var cards = data.projects || [];
         renderSummary(cards);
-        render(cards);
+        render(cards, data);
         stamp(data.fetched);
         if (data.error) {
           var banner = document.createElement("div");

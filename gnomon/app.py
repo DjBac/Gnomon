@@ -84,6 +84,7 @@ def new_card(repo: str) -> dict:
         "age": None,
         "age_is_floor": False,
         "commits_prev7": None,
+        "weeks": None,
         "stall": None,
         "stall_reason": "",
         "state": "unknown",
@@ -130,6 +131,7 @@ async def fetch_repo(
     since: str,
     cut7: str,
     cut14: str,
+    edges: list,
     seen: dict,
 ) -> dict:
     """Build one card from repo metadata, STATE.md and commit activity."""
@@ -155,6 +157,7 @@ async def fetch_repo(
         commits = ranking.code_commits(payload, book)
         card["commits_7d"], card["commits_30d"] = ranking.count_commits(commits, cut7)
         card["commits_prev7"] = ranking.count_previous_week(commits, cut7, cut14)
+        card["weeks"] = ranking.week_buckets(commits, edges)
         card["momentum"] = ranking.momentum(card["commits_7d"], card["commits_30d"])
         # Age is days since real work, not days since the last push. A push
         # that only carried a STATE.md edit must not reset it.
@@ -257,13 +260,15 @@ async def refresh(app: web.Application) -> None:
     if token:
         headers["Authorization"] = f"Bearer {token}"
 
-    since, cut7, cut14 = ranking.commit_cutoffs(datetime.now(timezone.utc))
+    now = datetime.now(timezone.utc)
+    since, cut7, cut14 = ranking.commit_cutoffs(now)
+    edges = ranking.week_edges(now)
     seen = load_seen()
     timeout = aiohttp.ClientTimeout(total=20)
     async with aiohttp.ClientSession(headers=headers, timeout=timeout) as session:
         cards = await asyncio.gather(
             *(
-                fetch_repo(session, repo, stale_days, since, cut7, cut14, seen)
+                fetch_repo(session, repo, stale_days, since, cut7, cut14, edges, seen)
                 for repo in repos
             )
         )
@@ -273,8 +278,13 @@ async def refresh(app: web.Application) -> None:
     ranking.assign_roles(ordered)
     if ordered:
         ordered[0]["also_label"], ordered[0]["also"] = ranking.also_line(ordered)
+    weeks = ranking.board_weeks(ordered)
+    activity, average = ranking.activity_readout(weeks)
     app["cache"] = {
         "projects": ordered,
+        "weeks": weeks,
+        "activity": activity,
+        "week_average": average,
         "fetched": datetime.now(timezone.utc).isoformat(timespec="seconds"),
         "stale_days": stale_days,
         "phases": state.PHASES,

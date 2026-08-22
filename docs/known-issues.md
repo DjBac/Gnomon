@@ -100,3 +100,13 @@ instead of changing either.
 **`.card` and `button.refresh` hardcode `backdrop-filter` instead of using
 `--blur`.** Zero visual impact — day surfaces are opaque — but it forces GPU
 compositing on 12 cards in a phone webview for no gain.
+
+## Closed
+
+**The ring `<svg>` lacked `role="img"`** — fixed when the ring returned in
+0.5.7.
+
+**The stakes key did not legend** — the swatches were added in 0.5.7. It can
+still emit `0% product` on a degenerate split.
+
+**The board sorted on momentum but showed `commits_7d`** — fixed in 0.5.1.

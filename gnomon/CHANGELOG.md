@@ -1,5 +1,22 @@
 # Changelog
 
+## 0.5.7
+
+The board says how the month is going, in words before numbers.
+
+- A new activity panel sits under the now panel: the reading first — "your
+  quietest week in four" — then four weekly bars carrying their own counts,
+  then the four-week average as the baseline
+- Four whole weeks are bucketed from the commit payload already fetched, so
+  there is no extra API call and every bar is a full week
+- Four near-identical weeks read "holding steady" instead of being ranked.
+  Calling one of them the quietest is true and misleading at once
+- The comparison is against the four-week average rather than last week alone,
+  which one freak week could otherwise distort
+- The completion ring and the stakes split are back, inside the new panel. The
+  ring now carries role="img" so screen readers announce it, and the stakes key
+  gained colour swatches so it finally legends its own bar
+
 ## 0.5.6
 
 A deadline leads the board only when it actually needs you.
