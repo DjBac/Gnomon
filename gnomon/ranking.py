@@ -108,32 +108,72 @@ def assign_roles(ordered: list[dict]) -> None:
         max(candidates, key=lambda c: c["debt"])["role"] = "rescue"
 
 
-def order_reason(card: dict) -> tuple[str, str]:
-    """(sentence for the expanded card, badge for the hero)."""
-    dtt = card.get("days_to_target")
-    if dtt is not None and dtt <= URGENT_DAYS:
-        if dtt < 0:
-            return f"{-dtt} days overdue", f"{-dtt}d OVERDUE"
-        if dtt == 0:
-            return "ships today", "SHIPS today"
-        return f"ships in {dtt} days", f"SHIPS {dtt}d"
+def _activity_clause(card: dict) -> str:
+    """How fast this card is moving. Empty when activity is unknown.
 
+    Unknown is not zero: a failed activity call must not be reported as a
+    momentum of 0, so it contributes no clause at all.
+    """
     if card.get("momentum") is None:
-        return "activity unknown", "—"
-
+        return ""
     c7 = card.get("commits_7d") or 0
     c30 = card.get("commits_30d") or 0
     if c7 or c30:
         # Name the sort key and both its inputs: the row shows only c7, which
         # cannot explain why a quieter week outranks a busier one.
-        sentence = f"momentum {card['momentum']} - {c7} this week, {c30} this month"
-        badge = f"{c7}/wk" if c7 else f"{c30}/mo"
-        return sentence, badge
-
+        return f"momentum {card['momentum']} - {c7} this week, {c30} this month"
     age = card.get("age")
     if age is None:
-        return "no activity recorded", "quiet"
-    return f"quiet for {age} days", "quiet"
+        return "no activity recorded"
+    # Genuinely zero. "momentum 0 - 0 this week, 0 this month" is honest and
+    # unreadable; the quiet wording says the same thing in fewer words.
+    return f"quiet for {age} days"
+
+
+def order_reason(card: dict) -> tuple[str, str]:
+    """(sentence for the expanded card, badge for the hero)."""
+    dtt = card.get("days_to_target")
+    clause = _activity_clause(card)
+
+    if dtt is not None and dtt <= URGENT_DAYS:
+        if dtt < 0:
+            lead, badge = f"{-dtt} days overdue", f"{-dtt}d OVERDUE"
+        elif dtt == 0:
+            lead, badge = "ships today", "SHIPS today"
+        else:
+            lead, badge = f"ships in {dtt} days", f"SHIPS {dtt}d"
+        # The deadline leads because it is why the card ranks first; the
+        # momentum clause gives the pace arrow its numbers.
+        return (f"{lead} · {clause}" if clause else lead), badge
+
+    if not clause:
+        return "activity unknown", "\u2014"
+
+    c7 = card.get("commits_7d") or 0
+    c30 = card.get("commits_30d") or 0
+    if c7:
+        return clause, f"{c7}/wk"
+    if c30:
+        return clause, f"{c30}/mo"
+    return clause, "quiet"
+
+
+def why_line(card: dict) -> str:
+    """The expanded card's footer: why it ranks here, then what it is owed.
+
+    An overdue card is already named by `order_reason`, so `debt_reason` would
+    only state it a second time at the other end of the line. A blocked card is
+    not a restatement — the blocker outranks the date in `debt_reason`.
+    """
+    reason = card.get("order_reason") or ""
+    owed = card.get("debt_reason") or ""
+    dtt = card.get("days_to_target")
+    if owed and not card.get("blocker"):
+        overdue_twice = dtt is not None and dtt < 0
+        quiet_twice = f"quiet for {card.get('age')} days" in reason
+        if overdue_twice or quiet_twice:
+            owed = ""
+    return " \u00b7 ".join(part for part in (reason, owed) if part)
 
 
 def commit_cutoffs(now: datetime.datetime) -> tuple[str, str]:

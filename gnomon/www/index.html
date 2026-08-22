@@ -604,9 +604,9 @@ button.refresh[disabled] { opacity: .4; cursor: default; }
 
   function detailBlock(c) {
     var steps = stepList(c);
-    var reason = c.order_reason
-      ? c.order_reason + (c.debt_reason ? " · " + c.debt_reason : "")
-      : "";
+    // Composed by ranking.why_line, which drops a debt_reason that would only
+    // restate what the rank explanation already said.
+    var reason = c.why || "";
     if (!steps && !reason) return null;
     var wrap = el("div", "steps");
     var inner = el("div", "steps-inner");

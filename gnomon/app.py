@@ -91,6 +91,7 @@ def new_card(repo: str) -> dict:
         "role": "tail",
         "order_reason": "",
         "order_badge": "",
+        "why": "",
         "note": "",
     }
 
@@ -186,6 +187,7 @@ async def fetch_repo(
         card["age"], stale_days, card["blocker"], card["days_to_target"]
     )
     card["order_reason"], card["order_badge"] = ranking.order_reason(card)
+    card["why"] = ranking.why_line(card)
 
     previous = seen.get(repo, {})
     current = state.watched_values(meta)

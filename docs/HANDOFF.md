@@ -1,7 +1,7 @@
 # HANDOFF — read me first
 
 Written 2026-08-22, end of the session that shipped 0.4.0 and 0.5.0.
-Current release: **0.5.1**, on `main` and pushed.
+Current release: **0.5.2**, on `main` and pushed.
 
 ## What Gnomon is
 
@@ -21,10 +21,10 @@ stored by hand.
 | File | Lines | Responsibility | Imports |
 |---|---|---|---|
 | `gnomon/state.py` | 169 | Parse `STATE.md` — front-matter, steps, dates, normalisation, vanished-field diffing | `yaml`, stdlib |
-| `gnomon/ranking.py` | 159 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
+| `gnomon/ranking.py` | 199 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
 | `gnomon/github.py` | 82 | The three API calls and their error notes | `aiohttp` |
-| `gnomon/app.py` | 310 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
-| `gnomon/selftest.py` | 552 | The entire test suite | `state` + `ranking` only |
+| `gnomon/app.py` | 312 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
+| `gnomon/selftest.py` | 626 | The entire test suite | `state` + `ranking` only |
 | `gnomon/www/index.html` | 874 | The whole panel — tokens, layout, render | none |
 
 **`state.py` and `ranking.py` must never import `aiohttp`.** That is what lets
@@ -34,7 +34,7 @@ enforces it — keep it passing.
 ## How to test
 
 ```bash
-python3 gnomon/selftest.py          # 89 assertions, must exit 0
+python3 gnomon/selftest.py          # 103 assertions, must exit 0
 ```
 
 `aiohttp` is NOT installed on Anthony's Mac, so `app.py` and `github.py` cannot
@@ -169,15 +169,26 @@ was built to surface.
 See `STATE.md`'s `## Open` section for the live list, and `docs/known-issues.md`
 for parked technical findings from both releases.
 
-The momentum-tier `order_reason` fix shipped as **0.5.1**.
-`ranking.order_reason` now returns
-`"momentum 154 - 18 this week, 100 this month"` for the momentum tier instead of
-restating the week's count. The collapsed row still shows `18/wk`; the
-arithmetic is in the expanded view, which already renders `order_reason`
-verbatim. `gnomon/ranking.py` and `gnomon/selftest.py` only — no panel change.
-The suite is 89 assertions and exits 0.
+The momentum-tier `order_reason` fix shipped as **0.5.1**. **0.5.2** followed:
+
+- The deadline branch of `order_reason` now appends the momentum clause, so the
+  hero explains both why it ranks first and how fast it is moving. It was the
+  only card on the board whose momentum was never spelled out.
+- Activity wording is extracted into `_activity_clause`. Unknown momentum
+  contributes no clause at all rather than an invented `momentum 0`, and a
+  genuine zero falls through to `quiet for N days`.
+- New `ranking.why_line` composes the expanded card's footer and drops a
+  `debt_reason` that would only restate the rank explanation. Overdue and quiet
+  were each being stated twice, at both ends of one line.
+- `app.py` sets `card["why"]`; the panel's `detailBlock` reads it instead of
+  joining the two fields itself. `debt_reason` is untouched because the rescue
+  card still labels itself with it.
+
+That last point makes this a **panel release, not backend-only**. The DOM stub
+harness for it is `dom-why.js` in the session scratchpad — it injects an export
+before the panel's IIFE closes, then asserts the footer renders `why` verbatim
+and that nothing re-appends `debt_reason`. Six checks, all passing.
 
 The strongest remaining candidate is the `--unknown-c` routing in
 `docs/known-issues.md` — it reaches `.seg.done` via `--accent`, so an
-unknown-state card's progress reads 0% regardless of real progress. That one is
-a panel change, so it needs a DOM stub harness.
+unknown-state card's progress reads 0% regardless of real progress.

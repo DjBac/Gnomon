@@ -240,6 +240,62 @@ def selftest_roles() -> int:
     return 1 if failures else 0
 
 
+def selftest_why_line() -> int:
+    """The footer must not state the same fact at both ends of the line."""
+    def line(**kw):
+        kw.setdefault("blocker", "")
+        card = _card("a", **kw)
+        card["order_reason"], _ = ranking.order_reason(card)
+        card["debt_reason"] = ranking.debt_reason(
+            card.get("age"), 14, card["blocker"], card.get("days_to_target")
+        )
+        return ranking.why_line(card)
+
+    cases = [
+        ("deadline keeps its debt",
+         dict(days_to_target=11, commits_7d=2, commits_30d=25, momentum=31, age=5),
+         "ships in 11 days \u00b7 momentum 31 - 2 this week, 25 this month"
+         " \u00b7 quiet 5 days"),
+        # order_reason already says overdue; debt_reason would say it again.
+        ("overdue said once",
+         dict(days_to_target=-3, commits_7d=1, commits_30d=9, momentum=12, age=3),
+         "3 days overdue \u00b7 momentum 12 - 1 this week, 9 this month"),
+        # A blocker is not a restatement of the date, so it survives.
+        ("blocked overdue keeps blocked",
+         dict(days_to_target=-3, commits_7d=1, commits_30d=9, momentum=12,
+              age=3, blocker="waiting"),
+         "3 days overdue \u00b7 momentum 12 - 1 this week, 9 this month"
+         " \u00b7 blocked"),
+        # The quiet fallback and debt_reason both report the same age.
+        ("quiet said once",
+         dict(days_to_target=21, commits_7d=0, commits_30d=0, momentum=0, age=40),
+         "ships in 21 days \u00b7 quiet for 40 days"),
+        ("unknown keeps its debt",
+         dict(days_to_target=8, momentum=None, commits_7d=None,
+              commits_30d=None, age=5),
+         "ships in 8 days \u00b7 quiet 5 days"),
+        ("momentum tier unchanged",
+         dict(commits_7d=18, commits_30d=100, momentum=154, age=1),
+         "momentum 154 - 18 this week, 100 this month \u00b7 quiet 1 days"),
+    ]
+    failures = 0
+    for label, kw, want in cases:
+        got = line(**kw)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  why: {label:28} {got}"
+              f"{'' if ok else f'  (want {want})'}")
+
+    # No fact may appear twice on one line.
+    for label, kw, _ in cases:
+        got = line(**kw)
+        dupe = got.count("overdue") > 1 or got.count("quiet") > 1
+        failures += dupe
+        print(f"{'PASS' if not dupe else 'FAIL'}  why: no fact twice "
+              f"{label:20} {got}")
+    return 1 if failures else 0
+
+
 def selftest_reason_matches_sort_key() -> int:
     """The sentence must state the number the sort actually uses."""
     failures = 0
@@ -267,12 +323,29 @@ def selftest_reason_matches_sort_key() -> int:
 
 def selftest_order_reason() -> int:
     cases = [
-        ("ships soon", _card("a", days_to_target=12),
-         ("ships in 12 days", "SHIPS 12d")),
-        ("ships today", _card("a", days_to_target=0),
-         ("ships today", "SHIPS today")),
-        ("overdue", _card("a", days_to_target=-3),
-         ("3 days overdue", "3d OVERDUE")),
+        # The deadline leads; the momentum clause follows when activity is known.
+        ("ships soon", _card("a", days_to_target=12, commits_7d=2,
+                             commits_30d=25, momentum=31),
+         ("ships in 12 days \u00b7 momentum 31 - 2 this week, 25 this month",
+          "SHIPS 12d")),
+        ("ships today", _card("a", days_to_target=0, commits_7d=4,
+                              commits_30d=4, momentum=16),
+         ("ships today \u00b7 momentum 16 - 4 this week, 4 this month",
+          "SHIPS today")),
+        ("overdue", _card("a", days_to_target=-3, commits_7d=1,
+                          commits_30d=9, momentum=12),
+         ("3 days overdue \u00b7 momentum 12 - 1 this week, 9 this month",
+          "3d OVERDUE")),
+        # Unknown is not zero: no clause rather than an invented momentum.
+        ("deadline, activity unknown",
+         _card("a", days_to_target=8, momentum=None, commits_7d=None,
+               commits_30d=None),
+         ("ships in 8 days", "SHIPS 8d")),
+        # Genuinely zero falls through to the quiet wording, not "momentum 0".
+        ("deadline, genuinely quiet",
+         _card("a", days_to_target=21, commits_7d=0, commits_30d=0,
+               momentum=0, age=40),
+         ("ships in 21 days \u00b7 quiet for 40 days", "SHIPS 21d")),
         ("active", _card("a", commits_7d=51, commits_30d=51, momentum=204),
          ("momentum 204 - 51 this week, 51 this month", "51/wk")),
         ("one commit", _card("a", commits_7d=1, commits_30d=1, momentum=4),
@@ -538,6 +611,7 @@ def main() -> int:
     failures += selftest_roles()
     failures += selftest_order_reason()
     failures += selftest_reason_matches_sort_key()
+    failures += selftest_why_line()
     failures += selftest_golden_order()
     failures += selftest_debt_never_orders()
     failures += selftest_rescue_selection()

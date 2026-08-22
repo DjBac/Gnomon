@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.5.2
+
+The hero explains its own pace, and the footer stops repeating itself.
+
+- A card ranked by its deadline now carries the momentum arithmetic too, so the
+  hero reads `ships in 11 days - momentum 31 - 2 this week, 25 this month`. It
+  was the only card on the board whose momentum was never spelled out
+- Unknown activity adds no momentum clause at all rather than reporting a
+  momentum of 0, which would be a different fact
+- A project with a deadline and genuinely no commits reads `quiet for 40 days`
+  instead of `momentum 0 - 0 this week, 0 this month`
+- The expanded footer no longer states overdue, or a quiet stretch, twice at
+  opposite ends of the same line
+
 ## 0.5.1
 
 The expanded card explains its position on the board.

@@ -35,16 +35,18 @@ from the `gnomon` repository.
 Read `docs/HANDOFF.md` first. Parked technical findings are in
 `docs/known-issues.md`.
 
-**Next — undecided.** The momentum-tier fix is done: `ranking.order_reason`
-now returns `"momentum 154 - 18 this week, 100 this month"` for the momentum
-tier, naming the sort key and both its inputs. The collapsed row still shows
-`18/wk`; the arithmetic lives one tap away in the expanded view. Released as
-0.5.1.
+**Shipped in 0.5.2.** The hero now carries its momentum arithmetic:
+`order_reason`'s deadline branch appends the momentum clause, so
+`ships in 11 days · momentum 31 - 2 this week, 25 this month · quiet 5 days`.
+Unknown momentum adds no clause; a genuine zero reads `quiet for N days`. A new
+`ranking.why_line` stops the footer stating overdue or quiet twice. The panel
+reads one composed `why` field instead of joining two. Suite is 103 assertions.
 
-The strongest remaining candidate is the `--unknown-c` routing in
-`docs/known-issues.md`: it reaches `.seg.done` through `--accent`, so an
-unknown-state card reads 0% progress regardless. It is a panel change, so it
-needs a DOM stub harness.
+**Open question — surfacing neglect.** The board is ordered by momentum, so the
+projects Anthony has not touched sink to the bottom, which is the opposite of
+what he wants to see. `debt` already measures this and the `rescue` role exists
+to surface it, but its floor (rank 5 or lower, debt >= 1.0) means it has never
+fired. Design not settled.
 
 - `Oikovis/pulse` is unreachable. Fine-grained PATs are scoped to a single
   resource owner, so a `DjBac` token cannot read it even though it is public,
