@@ -6,7 +6,7 @@ target: ""
 blocker: ""
 steps:
   - "[x] Six-field header with computed priority"
-  - "[x] Freshness derived from the repo's last push"
+  - "[x] Freshness derived from the last real code commit"
   - "[x] Published as a Home Assistant add-on repository"
   - "[x] Get the add-on running in Home Assistant"
   - "[x] Backfill STATE.md headers across remaining repos"
@@ -23,8 +23,10 @@ from the `gnomon` repository.
 
 ## Decided
 - Schema: 6 fields — `project`, `phase`, `stakes`, `target`, `blocker`, `steps`.
-  `updated` is derived from the repo's last push; ordering is computed from
-  deadline and momentum on every poll, never stored.
+  `updated` is the repo's last push; freshness and momentum come from commits
+  that touched something other than STATE.md, so maintaining the board does not
+  make a project look worked on. Ordering is computed on every poll, never
+  stored.
 - Source of truth: `STATE.md` front-matter per repo. Pull, not push.
 - Surface: HA add-on, ingress panel, sidebar entry.
 - Distribution: add-on repository, not a local `/addons` folder.
@@ -57,8 +59,9 @@ fired. Design not settled.
 - `--unknown-c` reaches `.seg.done` via `--accent`, so an unknown card's
   progress reads 0% regardless. Fix by narrowing which consumers take it, not by
   changing the tone.
-- The rescue slot stays idle until roughly 2026-09-01. Seeding headers into ten
-  repos on 2026-08-17 reset every `pushed_at`, so no repo can cross the stale
-  threshold before then. Expected, not broken.
+- The rescue slot is still idle, but no longer because of the seeding: with
+  status commits excluded, the seasonal projects now carry enough debt to
+  qualify. What blocks them is the rank floor — rescue only considers cards
+  ranked 5th or lower. Decide whether to drop that rule.
 - Nothing has been verified in a real browser. localhost is blocked in the
   agent environment; Anthony is the only one who can look at the panel.

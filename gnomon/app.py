@@ -82,6 +82,7 @@ def new_card(repo: str) -> dict:
         "blocker": "",
         "updated": None,
         "age": None,
+        "age_is_floor": False,
         "state": "unknown",
         "commits_7d": None,
         "commits_30d": None,
@@ -140,9 +141,25 @@ async def fetch_repo(
         return card
 
     payload, activity_note = await github.fetch_commits(session, repo, since)
-    if payload is not None:
-        card["commits_7d"], card["commits_30d"] = ranking.count_commits(payload, cut7)
+    book, book_note = await github.fetch_commits(session, repo, since, path="STATE.md")
+    activity_note = activity_note or book_note
+    # Both calls are one fact. Without the STATE.md list we cannot tell work
+    # from bookkeeping, and guessing would report status commits as activity —
+    # unknown is not zero, and it is not "probably fine" either.
+    if payload is not None and book is not None:
+        commits = ranking.code_commits(payload, book)
+        card["commits_7d"], card["commits_30d"] = ranking.count_commits(commits, cut7)
         card["momentum"] = ranking.momentum(card["commits_7d"], card["commits_30d"])
+        # Age is days since real work, not days since the last push. A push
+        # that only carried a STATE.md edit must not reset it.
+        last_day = ranking.last_code_day(commits)
+        if last_day:
+            card["age"] = state.days_since(last_day)
+        else:
+            # No work anywhere in the window. All that is honestly known is
+            # that it has been at least this long.
+            card["age"] = ranking.MOMENTUM_WINDOW_DAYS
+            card["age_is_floor"] = True
 
     body, state_note = await github.fetch_state_md(session, repo)
     meta: dict = {}
@@ -184,7 +201,8 @@ async def fetch_repo(
         card["age"], stale_days, card["blocker"], card["days_to_target"]
     )
     card["debt_reason"] = ranking.debt_reason(
-        card["age"], stale_days, card["blocker"], card["days_to_target"]
+        card["age"], stale_days, card["blocker"], card["days_to_target"],
+        card["age_is_floor"],
     )
     card["order_reason"], card["order_badge"] = ranking.order_reason(card)
     card["why"] = ranking.why_line(card)

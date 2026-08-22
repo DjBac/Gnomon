@@ -1,7 +1,7 @@
 # HANDOFF — read me first
 
 Written 2026-08-22, end of the session that shipped 0.4.0 and 0.5.0.
-Current release: **0.5.2**, on `main` and pushed.
+Current release: **0.5.3**, on `main` and pushed.
 
 ## What Gnomon is
 
@@ -22,7 +22,7 @@ stored by hand.
 |---|---|---|---|
 | `gnomon/state.py` | 169 | Parse `STATE.md` — front-matter, steps, dates, normalisation, vanished-field diffing | `yaml`, stdlib |
 | `gnomon/ranking.py` | 199 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
-| `gnomon/github.py` | 82 | The three API calls and their error notes | `aiohttp` |
+| `gnomon/github.py` | 87 | The four API calls and their error notes | `aiohttp` |
 | `gnomon/app.py` | 312 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
 | `gnomon/selftest.py` | 626 | The entire test suite | `state` + `ranking` only |
 | `gnomon/www/index.html` | 874 | The whole panel — tokens, layout, render | none |
@@ -64,8 +64,22 @@ arithmetic, and the DOM stub. Anthony is the only one who can look at it.
 Ties break on `stakes` (revenue, product, personal), then repo name.
 
 Momentum counts commits on the **default branch only** — the commits call sends
-no `sha`, so unmerged feature-branch work does not raise it even though
-`pushed_at` still counts that push as fresh.
+no `sha`, so unmerged feature-branch work does not raise it.
+
+**Status commits do not count as work.** A second commits call with
+`path=STATE.md` lists the bookkeeping commits, and `ranking.code_commits`
+subtracts them by SHA. Without this, feeding Gnomon made every project look
+alive: a dormant repo's one seeded header read as `1/wk` and `fresh`. A commit
+that bundles STATE.md with real code is dropped too, so an active project
+undercounts by roughly one commit per session — deliberate, because the
+alternative is a dormant project reporting activity it does not have.
+
+**Age is days since the last code commit, not days since the last push.**
+`pushed_at` is repo-level: any push, any branch, any file. When no code commit
+appears anywhere in the 30-day window, `age` is set to 30 with
+`age_is_floor` true, and every string says `30+ days` — a lower bound, never a
+measurement. `card["updated"]` still carries `pushed_at`, which remains a true
+fact about the repo, just not a fact about work.
 
 ### Debt marks a card and never moves one
 
@@ -143,9 +157,10 @@ Companion app → Debugging → **Reset frontend cache**, then force-quit.
 ## What is on the board right now
 
 12 repos configured, 10 reporting. Ten of them were seeded with headers in one
-sitting on 2026-08-17, which reset every `pushed_at` — so **freshness and the
-rescue slot are both flat until roughly 1 September**, when real ages spread out
-again. That is expected, not broken.
+sitting on 2026-08-17. That reset every `pushed_at` and, until 0.5.3, made all
+ten read as freshly worked. With status commits now excluded, the seasonal
+projects — Doukas Bus, Pounta, Pilates — drop to `0/wk` and `no code in 30+
+days` instead.
 
 `anthonyvenitis.com` is the hero: ships **2026-09-02**, the only targeted
 `revenue` project, and decelerating — 2 commits a week against a 25-a-month

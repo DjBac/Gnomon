@@ -94,8 +94,9 @@ ahead of lowercase repos on a full tier/momentum/stakes tie.
 refetched in full every poll — roughly 38 MB/day. The DOCS rate-limit section
 counts requests, not bytes.
 
-**Three GitHub calls per repo per cycle.** 12 repos every 15 minutes is ~144
-calls/hour against a 5,000/hour limit.
+**Four GitHub calls per repo per cycle.** 12 repos every 15 minutes is ~192
+calls/hour against a 5,000/hour limit. The fourth is the `path=STATE.md`
+commits call that tells bookkeeping apart from work.
 
 ## Not defects — recorded so they are not "fixed"
 

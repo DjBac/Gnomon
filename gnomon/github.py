@@ -55,15 +55,20 @@ async def fetch_state_md(session: aiohttp.ClientSession, repo: str) -> tuple[str
 
 
 async def fetch_commits(
-    session: aiohttp.ClientSession, repo: str, since: str
+    session: aiohttp.ClientSession, repo: str, since: str, path: str = ""
 ) -> tuple[list | None, str]:
     """Commits since a timestamp. Returns (payload, note).
+
+    `path` restricts the answer to commits touching that file, which is how
+    status-only commits are told apart from real work.
 
     A failure returns (None, note) and NEVER an empty list — an unreachable
     API must not make an active project look dormant.
     """
     url = f"{GITHUB_API}/repos/{repo}/commits"
     params = {"since": since, "per_page": "100"}
+    if path:
+        params["path"] = path
     try:
         async with session.get(
             url, params=params, headers={"Accept": "application/vnd.github+json"}

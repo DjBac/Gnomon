@@ -240,6 +240,107 @@ def selftest_roles() -> int:
     return 1 if failures else 0
 
 
+def _commit(sha: str, day: str) -> dict:
+    return {"sha": sha, "commit": {"committer": {"date": day + "T09:00:00Z"}}}
+
+
+def selftest_code_commits() -> int:
+    """Maintaining the board must not make a project look worked on."""
+    failures = 0
+
+    # The case this exists for: a dormant repo whose only commit is the
+    # STATE.md header that was seeded into it.
+    payload = [_commit("s1", "2026-08-17")]
+    book = [_commit("s1", "2026-08-17")]
+    got = ranking.code_commits(payload, book)
+    ok = got == []
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  code: status-only repo is zero   {len(got)}")
+
+    # Real work survives; the bundled status commit does not.
+    payload = [_commit("a", "2026-08-22"), _commit("b", "2026-08-21"),
+               _commit("s1", "2026-08-20")]
+    book = [_commit("s1", "2026-08-20")]
+    got = ranking.code_commits(payload, book)
+    ok = [c["sha"] for c in got] == ["a", "b"]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  code: work survives bookkeeping  "
+          f"{[c['sha'] for c in got]}")
+
+    # No bookkeeping at all changes nothing.
+    got = ranking.code_commits(payload, [])
+    ok = len(got) == 3
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  code: empty exclusion is a no-op {len(got)}")
+
+    # Counting runs on the filtered list, so the seeded repo reads 0/0.
+    payload = [_commit("s1", "2026-08-17")]
+    c7, c30 = ranking.count_commits(ranking.code_commits(payload, payload), "2026-08-15")
+    ok = (c7, c30) == (0, 0) and ranking.momentum(c7, c30) == 0
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  code: seeded repo counts 0/0     {(c7, c30)}")
+
+    # The newest surviving commit dates the project, not the newest push.
+    day = ranking.last_code_day([_commit("a", "2026-06-02"), _commit("b", "2026-07-11")])
+    ok = day == "2026-07-11"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  code: last_code_day is newest    {day}")
+
+    ok = ranking.last_code_day([]) == ""
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  code: no commits, no day         "
+          f"{ranking.last_code_day([])!r}")
+    return 1 if failures else 0
+
+
+def selftest_age_floor() -> int:
+    """A floor is a lower bound and must never be read as a measurement."""
+    failures = 0
+    cases = [
+        ("measured span", (5, False), "5 days"),
+        ("floored span", (30, True), "30+ days"),
+        ("unknown span", (None, False), ""),
+    ]
+    for label, (age, floor), want in cases:
+        got = ranking.quiet_span(age, floor)
+        ok = got == want
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  floor: {label:22} {got!r}")
+
+    # The clause names the floor rather than inventing a precise age.
+    card = _card("a", commits_7d=0, commits_30d=0, momentum=0, age=30)
+    card["age_is_floor"] = True
+    got, _ = ranking.order_reason(card)
+    ok = got == "no code in 30+ days"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  floor: clause names the floor    {got!r}")
+
+    # A measured age keeps the old wording.
+    card = _card("a", commits_7d=0, commits_30d=0, momentum=0, age=40)
+    got, _ = ranking.order_reason(card)
+    ok = got == "quiet for 40 days"
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  floor: measured age unchanged    {got!r}")
+
+    # debt_reason agrees with the clause, and the footer says it once.
+    card = _card("a", commits_7d=0, commits_30d=0, momentum=0, age=30)
+    card["age_is_floor"] = True
+    card["order_reason"], _ = ranking.order_reason(card)
+    card["debt_reason"] = ranking.debt_reason(30, 14, "", None, True)
+    line = ranking.why_line(card)
+    ok = line == "no code in 30+ days" and line.count("30+") == 1
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  floor: span stated once          {line!r}")
+
+    # A floored age still classifies and still accrues debt.
+    ok = (ranking.classify("", "", 30, 14) == "stale"
+          and ranking.debt(30, 14, "", None) > 2.0)
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  floor: still stale, still owed   "
+          f"{ranking.classify('', '', 30, 14)}")
+    return 1 if failures else 0
+
+
 def selftest_why_line() -> int:
     """The footer must not state the same fact at both ends of the line."""
     def line(**kw):
@@ -612,6 +713,8 @@ def main() -> int:
     failures += selftest_order_reason()
     failures += selftest_reason_matches_sort_key()
     failures += selftest_why_line()
+    failures += selftest_code_commits()
+    failures += selftest_age_floor()
     failures += selftest_golden_order()
     failures += selftest_debt_never_orders()
     failures += selftest_rescue_selection()

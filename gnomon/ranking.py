@@ -53,17 +53,32 @@ def debt(
     return round(total, 2)
 
 
+def quiet_span(age: int | None, floor: bool = False) -> str:
+    """How long this project has been quiet, as a phrase.
+
+    `floor` means the age is a lower bound, not a measurement: STATE.md-only
+    commits have been excluded and no real work appears anywhere in the
+    30-day window, so all that is honestly known is "at least this long".
+    """
+    if age is None:
+        return ""
+    return f"{age}+ days" if floor else f"{age} days"
+
+
 def debt_reason(
-    age: int | None, stale_days: int, blocker: str, days_to_target: int | None
+    age: int | None,
+    stale_days: int,
+    blocker: str,
+    days_to_target: int | None,
+    floor: bool = False,
 ) -> str:
     """Four words on why this card is owed attention."""
     if blocker:
         return "blocked"
     if days_to_target is not None and days_to_target < 0:
         return f"{-days_to_target}d overdue"
-    if age is not None:
-        return f"quiet {age} days"
-    return ""
+    span = quiet_span(age, floor)
+    return f"quiet {span}" if span else ""
 
 
 def order_key(card: dict) -> tuple:
@@ -123,11 +138,14 @@ def _activity_clause(card: dict) -> str:
         # cannot explain why a quieter week outranks a busier one.
         return f"momentum {card['momentum']} - {c7} this week, {c30} this month"
     age = card.get("age")
-    if age is None:
+    span = quiet_span(age, card.get("age_is_floor", False))
+    if not span:
         return "no activity recorded"
     # Genuinely zero. "momentum 0 - 0 this week, 0 this month" is honest and
     # unreadable; the quiet wording says the same thing in fewer words.
-    return f"quiet for {age} days"
+    if card.get("age_is_floor"):
+        return f"no code in {span}"
+    return f"quiet for {span}"
 
 
 def order_reason(card: dict) -> tuple[str, str]:
@@ -170,7 +188,8 @@ def why_line(card: dict) -> str:
     dtt = card.get("days_to_target")
     if owed and not card.get("blocker"):
         overdue_twice = dtt is not None and dtt < 0
-        quiet_twice = f"quiet for {card.get('age')} days" in reason
+        span = quiet_span(card.get("age"), card.get("age_is_floor", False))
+        quiet_twice = bool(span) and span in reason
         if overdue_twice or quiet_twice:
             owed = ""
     return " \u00b7 ".join(part for part in (reason, owed) if part)
@@ -190,6 +209,27 @@ def _commit_day(commit) -> str:
         return commit["commit"]["committer"]["date"][:10]
     except (KeyError, TypeError, IndexError):
         return ""
+
+
+def code_commits(payload: list, bookkeeping: list) -> list:
+    """Commits that changed something other than STATE.md.
+
+    Maintaining the board must not make a project look worked on. A commit
+    that bundles STATE.md with real code is counted as bookkeeping and
+    dropped, so an active project undercounts by roughly one commit per
+    session while a dormant one collapses to exactly zero.
+    """
+    skip = {c.get("sha") for c in bookkeeping if isinstance(c, dict) and c.get("sha")}
+    return [
+        c for c in payload
+        if isinstance(c, dict) and c.get("sha") not in skip
+    ]
+
+
+def last_code_day(commits: list) -> str:
+    """ISO date of the newest commit given, or "" when there is none."""
+    days = [d for d in (_commit_day(c) for c in commits) if d]
+    return max(days) if days else ""
 
 
 def count_commits(payload: list, cut7: str) -> tuple[int, int]:

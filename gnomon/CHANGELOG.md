@@ -1,5 +1,24 @@
 # Changelog
 
+## 0.5.3
+
+Maintaining the board no longer makes a project look worked on.
+
+- Freshness is now days since the last real code commit, not days since the
+  last push. A push carrying only a STATE.md edit reset the age, so every
+  dormant project that had been given a status header reported as freshly
+  worked
+- Momentum ignores status commits. A second commits call lists what touched
+  STATE.md and those commits are subtracted, so a seasonal project sitting at
+  one seeded header now reads 0/wk rather than 1/wk
+- A project with no code anywhere in the 30-day window reads `no code in 30+
+  days` — a lower bound, never a fabricated precise age
+- A commit that bundles STATE.md with real code counts as bookkeeping, so an
+  active project undercounts by roughly one commit per session. Deliberate: the
+  alternative is a dormant project reporting activity it does not have
+- Four GitHub calls per repo per cycle instead of three, about 192 an hour
+  against a 5,000 limit
+
 ## 0.5.2
 
 The hero explains its own pace, and the footer stops repeating itself.
