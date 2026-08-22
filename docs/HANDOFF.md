@@ -24,7 +24,7 @@ stored by hand.
 | `gnomon/ranking.py` | 159 | Momentum, debt, ordering, roles, human-readable reasons | stdlib only |
 | `gnomon/github.py` | 82 | The three API calls and their error notes | `aiohttp` |
 | `gnomon/app.py` | 310 | Options, card assembly, `/data` persistence, HTTP routes | all of the above |
-| `gnomon/selftest.py` | 518 | The entire test suite | `state` + `ranking` only |
+| `gnomon/selftest.py` | 552 | The entire test suite | `state` + `ranking` only |
 | `gnomon/www/index.html` | 874 | The whole panel — tokens, layout, render | none |
 
 **`state.py` and `ranking.py` must never import `aiohttp`.** That is what lets
@@ -34,7 +34,7 @@ enforces it — keep it passing.
 ## How to test
 
 ```bash
-python3 gnomon/selftest.py          # 81 assertions, must exit 0
+python3 gnomon/selftest.py          # 89 assertions, must exit 0
 ```
 
 `aiohttp` is NOT installed on Anthony's Mac, so `app.py` and `github.py` cannot
@@ -169,10 +169,15 @@ was built to surface.
 See `STATE.md`'s `## Open` section for the live list, and `docs/known-issues.md`
 for parked technical findings from both releases.
 
-The next change is **0.5.1, backend only**: `ranking.order_reason` explains a
-card's position for the deadline tier but not the momentum tier, where it just
-restates the count already on the row. `STATE.md`'s `## Open` section carries the
-full diagnosis, the intended output, and why 0.3.1 is the precedent.
+The momentum-tier `order_reason` fix is **done and unreleased** — the version
+has not been bumped, per the standing rule. `ranking.order_reason` now returns
+`"momentum 154 - 18 this week, 100 this month"` for the momentum tier instead of
+restating the week's count. The collapsed row still shows `18/wk`; the
+arithmetic is in the expanded view, which already renders `order_reason`
+verbatim. `gnomon/ranking.py` and `gnomon/selftest.py` only — no panel change.
+The suite is 89 assertions and exits 0.
 
-It touches `gnomon/ranking.py` and `gnomon/selftest.py` only — no panel change,
-so the real suite covers it and no DOM harness is needed.
+The strongest remaining candidate is the `--unknown-c` routing in
+`docs/known-issues.md` — it reaches `.seg.done` via `--accent`, so an
+unknown-state card's progress reads 0% regardless of real progress. That one is
+a panel change, so it needs a DOM stub harness.

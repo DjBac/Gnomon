@@ -9,12 +9,6 @@ Ordered roughly by how much they matter.
 
 ## Display
 
-**The board sorts on momentum but shows `commits_7d`.**
-`momentum = (7d x 3) + 30d`, so Nostos at 18/wk ranks above Gnomon at 30/wk
-because its month was 100 against 33. Nothing on the card explains the
-inversion. This is the same class of defect 0.3.1 existed to correct — a board
-ordering by a number it never displays. **The most worthwhile open fix.**
-
 **`--unknown-c` reaches data-bearing surfaces.**
 It is routed through `--accent`, so besides the accent rail it also paints
 `.seg.done`, `.actbar i`, `.badge` (text and border) and `.steps li.current

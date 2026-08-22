@@ -123,12 +123,12 @@ def order_reason(card: dict) -> tuple[str, str]:
 
     c7 = card.get("commits_7d") or 0
     c30 = card.get("commits_30d") or 0
-    if c7:
-        unit = "commit" if c7 == 1 else "commits"
-        return f"{c7} {unit} this week", f"{c7}/wk"
-    if c30:
-        unit = "commit" if c30 == 1 else "commits"
-        return f"{c30} {unit} this month", f"{c30}/mo"
+    if c7 or c30:
+        # Name the sort key and both its inputs: the row shows only c7, which
+        # cannot explain why a quieter week outranks a busier one.
+        sentence = f"momentum {card['momentum']} - {c7} this week, {c30} this month"
+        badge = f"{c7}/wk" if c7 else f"{c30}/mo"
+        return sentence, badge
 
     age = card.get("age")
     if age is None:

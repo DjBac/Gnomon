@@ -240,6 +240,31 @@ def selftest_roles() -> int:
     return 1 if failures else 0
 
 
+def selftest_reason_matches_sort_key() -> int:
+    """The sentence must state the number the sort actually uses."""
+    failures = 0
+    for c7, c30 in ((18, 100), (30, 33), (0, 9), (1, 1), (51, 51)):
+        mom = ranking.momentum(c7, c30)
+        card = _card("a", commits_7d=c7, commits_30d=c30, momentum=mom)
+        sentence, _ = ranking.order_reason(card)
+        stated = sentence.split()[1] if sentence.startswith("momentum ") else ""
+        ranked = -ranking.order_key(card)[2]
+        ok = stated == str(mom) == str(ranked)
+        failures += not ok
+        print(f"{'PASS' if ok else 'FAIL'}  reason: states sort key "
+              f"{c7}/{c30} -> {stated} (key {ranked})")
+
+    # A quieter week outranking a busier one is explained, not merely restated.
+    quiet = _card("q", commits_7d=18, commits_30d=100, momentum=154)
+    busy = _card("b", commits_7d=30, commits_30d=33, momentum=123)
+    ranks = sorted([quiet, busy], key=ranking.order_key)
+    ok = ranks[0] is quiet and "100" in ranking.order_reason(quiet)[0]
+    failures += not ok
+    print(f"{'PASS' if ok else 'FAIL'}  reason: inversion explained     "
+          f"{ranking.order_reason(quiet)[0]}")
+    return 1 if failures else 0
+
+
 def selftest_order_reason() -> int:
     cases = [
         ("ships soon", _card("a", days_to_target=12),
@@ -249,11 +274,19 @@ def selftest_order_reason() -> int:
         ("overdue", _card("a", days_to_target=-3),
          ("3 days overdue", "3d OVERDUE")),
         ("active", _card("a", commits_7d=51, commits_30d=51, momentum=204),
-         ("51 commits this week", "51/wk")),
+         ("momentum 204 - 51 this week, 51 this month", "51/wk")),
         ("one commit", _card("a", commits_7d=1, commits_30d=1, momentum=4),
-         ("1 commit this week", "1/wk")),
+         ("momentum 4 - 1 this week, 1 this month", "1/wk")),
         ("older work only", _card("a", commits_7d=0, commits_30d=9, momentum=9),
-         ("9 commits this month", "9/mo")),
+         ("momentum 9 - 0 this week, 9 this month", "9/mo")),
+        # The inversion the sentence exists to explain: fewer commits this
+        # week, higher rank, because the month carries the score.
+        ("busier week, lower rank",
+         _card("a", commits_7d=30, commits_30d=33, momentum=123),
+         ("momentum 123 - 30 this week, 33 this month", "30/wk")),
+        ("quieter week, higher rank",
+         _card("a", commits_7d=18, commits_30d=100, momentum=154),
+         ("momentum 154 - 18 this week, 100 this month", "18/wk")),
         ("quiet", _card("a", commits_7d=0, commits_30d=0, momentum=0, age=94),
          ("quiet for 94 days", "quiet")),
         ("unknown", _card("a", momentum=None, commits_7d=None, commits_30d=None),
@@ -504,6 +537,7 @@ def main() -> int:
     failures += selftest_ordering()
     failures += selftest_roles()
     failures += selftest_order_reason()
+    failures += selftest_reason_matches_sort_key()
     failures += selftest_golden_order()
     failures += selftest_debt_never_orders()
     failures += selftest_rescue_selection()
