@@ -12,7 +12,8 @@ steps:
   - "[x] Backfill STATE.md headers across remaining repos"
   - "[x] Panel redesign for the six-field card"
   - "[x] Momentum board with hero and rescue"
-  - "[>] Activity dashboard with day and night themes"
+  - "[x] Activity dashboard with day and night themes"
+  - "[>] Show momentum on the card, not the weekly count"
 ---
 
 # Gnomon
@@ -30,5 +31,25 @@ from the `gnomon` repository.
 - Read-only v1; write-back deferred to v2.
 
 ## Open
-- Session-end header convention rolled out across all repos
-- Backfill headers repo by repo
+
+Read `docs/HANDOFF.md` first. Parked technical findings are in
+`docs/known-issues.md`.
+
+**Next:** the board sorts on momentum but each row shows `commits_7d`, so
+Nostos at 18/wk sits above Gnomon at 30/wk with nothing explaining why. Same
+class as the defect 0.3.1 was written to fix.
+
+- `Oikovis/pulse` is unreachable. Fine-grained PATs are scoped to a single
+  resource owner, so a `DjBac` token cannot read it even though it is public,
+  and GitHub returns 404 rather than 403. The add-on takes one `github_token`.
+  Deferred by Anthony 2026-08-22.
+- `portolan` is configured but local only — `~/Code/portolan` is not a git repo
+  and has no `STATE.md`. Its card is correct until it is pushed.
+- `--unknown-c` reaches `.seg.done` via `--accent`, so an unknown card's
+  progress reads 0% regardless. Fix by narrowing which consumers take it, not by
+  changing the tone.
+- The rescue slot stays idle until roughly 2026-09-01. Seeding headers into ten
+  repos on 2026-08-17 reset every `pushed_at`, so no repo can cross the stale
+  threshold before then. Expected, not broken.
+- Nothing has been verified in a real browser. localhost is blocked in the
+  agent environment; Anthony is the only one who can look at the panel.

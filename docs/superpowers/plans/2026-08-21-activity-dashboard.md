@@ -21,7 +21,7 @@
 - **No emoji anywhere** — in code, UI text, docs or commit messages. Geometric glyphs only.
 - **Every colour is a token.** Components reference `var(--…)`; no component rule may contain a colour literal. A colour defined only inside the media query is the classic unreadable-theme bug.
 - Do not modify `build.yaml`, `run.sh`, `repository.yaml`, `README.md`, `.gitignore`, `Dockerfile`.
-- Test harnesses live in `/private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/` and are never committed.
+- Test harnesses live in `<scratch>/` — any directory outside the repo — and are never committed.
 
 ## Environment facts
 
@@ -203,7 +203,7 @@ Expected: `PASS: no colour literals outside the token blocks`. If any line is li
 
 - [ ] **Step 5: Prove the DOM did not change**
 
-Build a harness at `/private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task1-regression.js` that extracts the script from `gnomon/www/index.html`, runs `render()` against a fixture of one hero, one rescue and three tail cards under a DOM stub implementing `createElement`, `createElementNS`, `appendChild`, `className`, `textContent`, `setAttribute`, `classList`, `style.setProperty` and `getElementById`, then serialises the tree to a string of tag names, classes and text.
+Build a harness at `<scratch>/task1-regression.js` that extracts the script from `gnomon/www/index.html`, runs `render()` against a fixture of one hero, one rescue and three tail cards under a DOM stub implementing `createElement`, `createElementNS`, `appendChild`, `className`, `textContent`, `setAttribute`, `classList`, `style.setProperty` and `getElementById`, then serialises the tree to a string of tag names, classes and text.
 
 Capture that serialisation from `git stash` of the pre-task file and from the post-task file, and diff them.
 
@@ -246,7 +246,7 @@ git commit -m "Adopt the Argus tokens with a night and a day palette"
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `/private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task2-summary.js`. It must extract the real script from `gnomon/www/index.html`, run it under a DOM stub, and reach the functions via a probe. Assert:
+Create `<scratch>/task2-summary.js`. It must extract the real script from `gnomon/www/index.html`, run it under a DOM stub, and reach the functions via a probe. Assert:
 
 ```javascript
 // ring geometry — the documented formula
@@ -335,7 +335,7 @@ than a bare `assert`, so one failure does not hide the rest.
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `node /private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task2-summary.js`
+Run: `node <scratch>/task2-summary.js`
 Expected: FAIL — `completionRing is not defined`.
 
 - [ ] **Step 3: Replace the tiles markup**
@@ -534,7 +534,7 @@ Then change the one call site inside `load()` from `tally(cards)` to `renderSumm
 
 - [ ] **Step 7: Run to verify the tests pass**
 
-Run: `node /private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task2-summary.js`
+Run: `node <scratch>/task2-summary.js`
 Expected: every assertion PASS.
 
 - [ ] **Step 8: Verify constraints and the python suite**
@@ -574,7 +574,7 @@ git commit -m "Replace the stat tiles with a summary panel"
 
 - [ ] **Step 1: Write the failing tests**
 
-Create `/private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task3-pace.js` with real assertions:
+Create `<scratch>/task3-pace.js` with real assertions:
 
 ```javascript
 // pace bands
@@ -615,7 +615,7 @@ Then structural assertions rendering the real functions under the DOM stub:
 
 - [ ] **Step 2: Run to verify they fail**
 
-Run: `node /private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task3-pace.js`
+Run: `node <scratch>/task3-pace.js`
 Expected: FAIL — `pace is not defined`.
 
 - [ ] **Step 3: Add the CSS**
@@ -731,7 +731,7 @@ In `render`, compute the maximum once across every card — hero and rescue incl
 
 - [ ] **Step 8: Run to verify the tests pass**
 
-Run: `node /private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task3-pace.js`
+Run: `node <scratch>/task3-pace.js`
 Expected: every assertion PASS.
 
 - [ ] **Step 9: Verify constraints**
@@ -817,7 +817,7 @@ python3 -c "import yaml; [yaml.safe_load(open(f)) for f in ['repository.yaml','g
 python3 -c "import sys,yaml; t=open('STATE.md').read(); assert t.startswith('---'); d=yaml.safe_load(t.split('---',2)[1]); s=d.get('steps',[]); assert all(isinstance(x,str) for x in s); cur=[x for x in s if x.startswith('[>]')]; assert len(cur)==1, cur; print(d['project'], len(s),'steps',sum(1 for x in s if x.startswith('[x]')),'done')"
 grep -n 'version:' gnomon/config.yaml
 python3 gnomon/selftest.py >/dev/null 2>&1 && echo "PASS: python suite green"
-node /private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task2-summary.js && node /private/tmp/claude-501/-Users-Anthony-Code-gnomon/4cfc8f97-2c01-4464-b4f3-10ee0c296ef6/scratchpad/task3-pace.js
+node <scratch>/task2-summary.js && node <scratch>/task3-pace.js
 ```
 Expected: `YAML ok`, the STATE.md line with exactly one current step, `version: "0.5.0"`, the python PASS, and both panel harnesses green.
 
