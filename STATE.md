@@ -38,8 +38,8 @@ Read `docs/HANDOFF.md` first. Parked technical findings are in
 **Next — undecided.** The momentum-tier fix is done: `ranking.order_reason`
 now returns `"momentum 154 - 18 this week, 100 this month"` for the momentum
 tier, naming the sort key and both its inputs. The collapsed row still shows
-`18/wk`; the arithmetic lives one tap away in the expanded view. Not yet
-released — the version has not been bumped.
+`18/wk`; the arithmetic lives one tap away in the expanded view. Released as
+0.5.1.
 
 The strongest remaining candidate is the `--unknown-c` routing in
 `docs/known-issues.md`: it reaches `.seg.done` through `--accent`, so an

@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.5.1
+
+The expanded card explains its position on the board.
+
+- A momentum-ranked card now reads `momentum 154 - 18 this week, 100 this
+  month` instead of restating the week's count, so a quieter week outranking a
+  busier one is legible rather than mysterious
+- The collapsed row is unchanged — still `18/wk`, the honest at-a-glance number
+- Backend only. No panel change and no new API calls
+
 ## 0.5.0
 
 The top of the board becomes a dashboard, and the panel gains a day theme.

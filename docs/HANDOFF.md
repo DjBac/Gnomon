@@ -1,7 +1,7 @@
 # HANDOFF — read me first
 
 Written 2026-08-22, end of the session that shipped 0.4.0 and 0.5.0.
-Current release: **0.5.0**, merged to `main` and pushed.
+Current release: **0.5.1**, on `main` and pushed.
 
 ## What Gnomon is
 
@@ -169,8 +169,8 @@ was built to surface.
 See `STATE.md`'s `## Open` section for the live list, and `docs/known-issues.md`
 for parked technical findings from both releases.
 
-The momentum-tier `order_reason` fix is **done and unreleased** — the version
-has not been bumped, per the standing rule. `ranking.order_reason` now returns
+The momentum-tier `order_reason` fix shipped as **0.5.1**.
+`ranking.order_reason` now returns
 `"momentum 154 - 18 this week, 100 this month"` for the momentum tier instead of
 restating the week's count. The collapsed row still shows `18/wk`; the
 arithmetic is in the expanded view, which already renders `order_reason`
