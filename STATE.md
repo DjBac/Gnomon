@@ -4,6 +4,7 @@ phase: parked
 stakes: personal
 target: ""
 blocker: ""
+platform: ha-addon
 steps:
   - "[x] Six-field header with computed priority"
   - "[x] Freshness derived from the last real code commit"
